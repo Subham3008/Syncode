@@ -14,7 +14,8 @@ export const env = {
   port: Number(process.env.PORT),
   nodeEnv: process.env.NODE_ENV,
   mongoUri: process.env.MONGODB_URI,
-  clientUrl: process.env.CLIENT_URL
+  clientUrl: process.env.CLIENT_URL,
+  redisUrl: process.env.REDIS_URL || "redis://localhost:6379"
 };
 
 export const isDevelopment = env.nodeEnv === "development";
