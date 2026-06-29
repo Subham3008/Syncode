@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
-import { Navigate, useParams } from "react-router-dom";
-import { Code2, Loader2 } from "lucide-react";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Loader2 } from "lucide-react";
+import EditorPlaceholder from "../components/editor/EditorPlaceholder.jsx";
+import PresencePlaceholder from "../components/presence/PresencePlaceholder.jsx";
+import HostControls from "../components/room/HostControls.jsx";
+import RoomHeader from "../components/room/RoomHeader.jsx";
 import { ROUTES } from "../constants/routes.js";
 import { rejoinRoom } from "../services/room.service.js";
 import { useRoomSession } from "../hooks/useRoomSession.js";
 
 const RoomPage = () => {
   const { roomCode } = useParams();
+  const navigate = useNavigate();
   const { session, saveSession, clearSession } = useRoomSession();
   const [room, setRoom] = useState(null);
   const [status, setStatus] = useState("loading");
@@ -44,39 +49,40 @@ const RoomPage = () => {
     return <Navigate replace to={ROUTES.HOME} />;
   }
 
-  return (
-    <main className="min-h-screen bg-canvas text-body">
-      <header className="flex h-12 items-center justify-between border-b border-border bg-surface px-4">
-        <div className="flex items-center gap-2">
-          <Code2 className="text-accent" size={20} />
-          <span className="text-sm font-semibold text-heading">Syncode</span>
-        </div>
-        <div className="rounded border border-border bg-canvas px-3 py-1 font-mono text-xs text-accent">
-          {roomCode}
-        </div>
-      </header>
+  const handleLeave = () => {
+    clearSession();
+    navigate(ROUTES.HOME);
+  };
 
-      <section className="grid min-h-[calc(100vh-48px)] place-items-center px-4">
-        <div className="w-full max-w-lg rounded-md border border-border bg-surface p-6">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded bg-elevated text-accent">
-              {status === "loading" ? <Loader2 className="animate-spin" size={20} /> : <Code2 size={20} />}
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">
-                Room Workspace
-              </p>
-              <h1 className="text-xl font-semibold text-heading">
-                {room?.roomName || "Restoring room session"}
-              </h1>
-            </div>
+  if (status === "loading") {
+    return (
+      <main className="grid min-h-screen place-items-center bg-canvas px-4 text-body">
+        <div className="w-full max-w-md rounded-md border border-border bg-surface p-6 text-center">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded border border-border bg-elevated text-accent">
+            <Loader2 className="animate-spin" size={22} />
           </div>
-
-          <p className="text-sm leading-6 text-muted">
-            {error || "Room dashboard, host controls, editor placeholder, and presence panel will be built in the next UI feature."}
+          <h1 className="mt-4 text-lg font-semibold text-heading">Restoring room session</h1>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            {error || "Checking your saved room identity."}
           </p>
         </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="flex min-h-screen flex-col bg-canvas text-body">
+      <RoomHeader onLeave={handleLeave} room={room} session={session} />
+
+      <section className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <EditorPlaceholder document={room.document} />
+        <PresencePlaceholder
+          activityLog={room.activityLog}
+          participants={room.participants}
+        />
       </section>
+
+      <HostControls room={room} session={session} />
     </main>
   );
 };
