@@ -58,6 +58,28 @@ const roomParamsSchema = z.object({
   roomCode: roomCodeSchema
 });
 
+const rejoinBodySchema = z
+  .object({
+    roomCode: z.unknown().optional(),
+    userId: z.unknown().optional()
+  })
+  .transform((value, context) => {
+    const roomCode = typeof value.roomCode === "string"
+      ? normalizeSpaces(value.roomCode).toUpperCase()
+      : "";
+    const userId = typeof value.userId === "string" ? normalizeSpaces(value.userId) : "";
+
+    if (!roomCode || !userId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "roomCode and userId are required"
+      });
+      return z.NEVER;
+    }
+
+    return { roomCode, userId };
+  });
+
 export const createRoomSchema = z.object({
   body: z.object({
     username: usernameSchema
@@ -72,10 +94,7 @@ export const joinRoomSchema = z.object({
 });
 
 export const rejoinRoomSchema = z.object({
-  body: z.object({
-    roomCode: roomCodeSchema,
-    userId: userIdSchema()
-  })
+  body: rejoinBodySchema
 });
 
 export const getRoomSchema = z.object({

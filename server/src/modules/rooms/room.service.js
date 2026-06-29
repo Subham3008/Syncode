@@ -127,13 +127,27 @@ export const joinRoom = async ({ roomCode, username }) => {
 };
 
 export const rejoinRoom = async ({ roomCode, userId }) => {
-  const room = await findRoomOrThrow(roomCode);
-  ensureRoomIsActive(room);
+  const normalizedRoomCode = typeof roomCode === "string" ? roomCode.trim().toUpperCase() : "";
+  const normalizedUserId = typeof userId === "string" ? userId.trim() : "";
 
-  const participant = room.participants.find((item) => item.userId === userId);
+  if (!normalizedRoomCode || !normalizedUserId) {
+    throw new ApiError(HTTP_STATUS.BAD_REQUEST, "roomCode and userId are required");
+  }
+
+  const room = await Room.findOne({ roomCode: normalizedRoomCode });
+
+  if (!room) {
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, "Room not found");
+  }
+
+  if (!room.isActive) {
+    throw new ApiError(HTTP_STATUS.FORBIDDEN, "Room is closed");
+  }
+
+  const participant = room.participants.find((item) => item.userId === normalizedUserId);
 
   if (!participant) {
-    throw new ApiError(HTTP_STATUS.NOT_FOUND, "Saved room session was not found");
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, "Participant not found in this room");
   }
 
   const wasOffline = !participant.isOnline;
@@ -143,7 +157,7 @@ export const rejoinRoom = async ({ roomCode, userId }) => {
   if (wasOffline) {
     addActivity(room, {
       type: "user_rejoined",
-      userId,
+      userId: normalizedUserId,
       username: participant.username,
       message: `${participant.username} rejoined the room`
     });

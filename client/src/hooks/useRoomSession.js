@@ -1,7 +1,40 @@
-import { useCallback } from "react";
-import { useLocalStorage } from "./useLocalStorage.js";
+import { useCallback, useState } from "react";
 
 export const ROOM_SESSION_KEY = "syncode.roomSession";
+const LEGACY_ROOM_SESSION_KEY = "syncode-session";
+
+const sanitizeRoomSession = (session) => {
+  if (!session || typeof session !== "object" || Array.isArray(session)) {
+    return null;
+  }
+
+  const roomCode = typeof session.roomCode === "string"
+    ? session.roomCode.trim().toUpperCase()
+    : "";
+  const userId = typeof session.userId === "string" ? session.userId.trim() : "";
+  const username = typeof session.username === "string" ? session.username.trim() : "";
+
+  if (!roomCode || !userId) {
+    return null;
+  }
+
+  return {
+    userId,
+    username,
+    roomCode,
+    isHost: Boolean(session.isHost)
+  };
+};
+
+const readRawSession = () => {
+  const currentSession = window.localStorage.getItem(ROOM_SESSION_KEY);
+
+  if (currentSession) {
+    return currentSession;
+  }
+
+  return window.localStorage.getItem(LEGACY_ROOM_SESSION_KEY);
+};
 
 export const getStoredRoomSession = () => {
   if (typeof window === "undefined") {
@@ -9,23 +42,32 @@ export const getStoredRoomSession = () => {
   }
 
   try {
-    const rawSession = window.localStorage.getItem(ROOM_SESSION_KEY);
-    return rawSession ? JSON.parse(rawSession) : null;
+    const rawSession = readRawSession();
+    const parsedSession = rawSession ? JSON.parse(rawSession) : null;
+    const cleanSession = sanitizeRoomSession(parsedSession);
+
+    if (rawSession && !cleanSession) {
+      clearStoredRoomSession();
+    }
+
+    return cleanSession;
   } catch {
+    clearStoredRoomSession();
     return null;
   }
 };
 
 export const persistRoomSession = (session) => {
-  const nextSession = {
-    userId: session.userId,
-    username: session.username,
-    roomCode: session.roomCode,
-    isHost: Boolean(session.isHost)
-  };
+  const nextSession = sanitizeRoomSession(session);
+
+  if (!nextSession) {
+    clearStoredRoomSession();
+    return null;
+  }
 
   if (typeof window !== "undefined") {
     window.localStorage.setItem(ROOM_SESSION_KEY, JSON.stringify(nextSession));
+    window.localStorage.removeItem(LEGACY_ROOM_SESSION_KEY);
   }
 
   return nextSession;
@@ -34,11 +76,12 @@ export const persistRoomSession = (session) => {
 export const clearStoredRoomSession = () => {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(ROOM_SESSION_KEY);
+    window.localStorage.removeItem(LEGACY_ROOM_SESSION_KEY);
   }
 };
 
 export const useRoomSession = () => {
-  const [session, setSession, removeSession] = useLocalStorage(ROOM_SESSION_KEY, null);
+  const [session, setSession] = useState(() => getStoredRoomSession());
 
   const saveSession = useCallback(
     (nextSession) => {
@@ -46,13 +89,13 @@ export const useRoomSession = () => {
       setSession(cleanSession);
       return cleanSession;
     },
-    [setSession]
+    []
   );
 
   const clearSession = useCallback(() => {
     clearStoredRoomSession();
-    removeSession();
-  }, [removeSession]);
+    setSession(null);
+  }, []);
 
   return {
     session,

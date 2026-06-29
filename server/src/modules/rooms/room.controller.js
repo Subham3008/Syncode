@@ -48,7 +48,7 @@ export const rejoinRoomController = asyncHandler(async (req, res) => {
 
   sendResponse(
     res,
-    new ApiResponse(HTTP_STATUS.OK, toRoomSessionDTO(room, sessionUser), "Room session restored")
+    new ApiResponse(HTTP_STATUS.OK, toRoomSessionDTO(room, sessionUser), "Room rejoined successfully")
   );
 });
 

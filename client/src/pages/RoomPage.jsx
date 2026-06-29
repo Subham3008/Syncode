@@ -33,7 +33,8 @@ const RoomPage = () => {
 
   useEffect(() => {
     const restoreRoom = async () => {
-      if (sessionRoomCode !== roomCode || !sessionUserId) {
+      if (!sessionRoomCode || !sessionUserId || sessionRoomCode !== roomCode) {
+        clearSession();
         setStatus("invalid");
         return;
       }
@@ -48,6 +49,10 @@ const RoomPage = () => {
         saveSession(response.data);
         setStatus("ready");
       } catch (requestError) {
+        if (import.meta.env.DEV) {
+          console.error("Room rejoin failed:", requestError);
+        }
+
         setError(requestError.message);
         clearSession();
         setStatus("invalid");
