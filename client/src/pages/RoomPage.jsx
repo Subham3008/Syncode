@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import EditorPlaceholder from "../components/editor/EditorPlaceholder.jsx";
 import PresencePlaceholder from "../components/presence/PresencePlaceholder.jsx";
 import Toast from "../components/common/Toast.jsx";
+import StatePanel from "../components/common/StatePanel.jsx";
 import HostControls from "../components/room/HostControls.jsx";
 import RoomHeader from "../components/room/RoomHeader.jsx";
 import { ROUTES } from "../constants/routes.js";
@@ -169,15 +170,12 @@ const RoomPage = () => {
   if (status === "loading") {
     return (
       <main className="grid min-h-screen place-items-center bg-canvas px-4 text-body">
-        <div className="w-full max-w-md rounded-md border border-border bg-surface p-6 text-center">
-          <div className="mx-auto grid h-12 w-12 place-items-center rounded border border-border bg-elevated text-accent">
-            <Loader2 className="animate-spin" size={22} />
-          </div>
-          <h1 className="mt-4 text-lg font-semibold text-heading">Restoring room session</h1>
-          <p className="mt-2 text-sm leading-6 text-muted">
-            {error || "Checking your saved room identity."}
-          </p>
-        </div>
+        <StatePanel
+          description={error || "Checking your saved room identity and reconnecting the room workspace."}
+          eyebrow="Room session"
+          icon={<Loader2 className="animate-spin" size={22} />}
+          title="Restoring room session"
+        />
       </main>
     );
   }
