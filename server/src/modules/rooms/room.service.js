@@ -136,14 +136,18 @@ export const rejoinRoom = async ({ roomCode, userId }) => {
     throw new ApiError(HTTP_STATUS.NOT_FOUND, "Saved room session was not found");
   }
 
+  const wasOffline = !participant.isOnline;
   participant.isOnline = true;
   participant.lastSeen = now();
-  addActivity(room, {
-    type: "user_rejoined",
-    userId,
-    username: participant.username,
-    message: `${participant.username} rejoined the room`
-  });
+
+  if (wasOffline) {
+    addActivity(room, {
+      type: "user_rejoined",
+      userId,
+      username: participant.username,
+      message: `${participant.username} rejoined the room`
+    });
+  }
 
   await room.save();
   return { room, sessionUser: participant };
