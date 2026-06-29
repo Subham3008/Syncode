@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Lock, Pencil, ShieldCheck, UserMinus, XCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Lock, Pencil, ShieldCheck, Unlock, UserMinus, XCircle } from "lucide-react";
 import Button from "../common/Button.jsx";
 import Badge from "../common/Badge.jsx";
 import Input from "../common/Input.jsx";
@@ -13,16 +13,23 @@ import {
 
 const HostControls = ({ room, session, onRoomUpdate, onRoomClosed, onNotify }) => {
   const [activeModal, setActiveModal] = useState(null);
-  const [roomName, setRoomName] = useState(room.roomName);
+  const [roomName, setRoomName] = useState(room?.roomName ?? "");
   const [targetUserId, setTargetUserId] = useState("");
   const [loadingAction, setLoadingAction] = useState("");
   const [error, setError] = useState("");
 
-  if (!session.isHost) {
+  useEffect(() => {
+    if (!activeModal) {
+      setRoomName(room?.roomName ?? "");
+    }
+  }, [activeModal, room?.roomName]);
+
+  if (!room || !session?.isHost) {
     return null;
   }
 
   const participants = room.participants?.filter((participant) => !participant.isHost) ?? [];
+  const isBusy = Boolean(loadingAction);
 
   const closeModal = () => {
     setActiveModal(null);
@@ -99,8 +106,8 @@ const HostControls = ({ room, session, onRoomUpdate, onRoomClosed, onNotify }) =
   };
 
   return (
-    <section className="border-t border-border bg-surface p-4">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <section className="shrink-0 border-t border-border bg-surface px-4 py-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">Host controls</p>
           <h2 className="mt-1 text-sm font-semibold text-heading">Room authority</h2>
@@ -112,20 +119,20 @@ const HostControls = ({ room, session, onRoomUpdate, onRoomClosed, onNotify }) =
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <Button onClick={() => setActiveModal("rename")} size="sm" variant="secondary">
+        <Button disabled={isBusy} onClick={() => setActiveModal("rename")} size="sm" variant="secondary">
           <Pencil size={14} />
           Rename
         </Button>
-        <Button loading={loadingAction === "lock"} onClick={handleLockToggle} size="sm" variant="secondary">
-          <Lock size={14} />
+        <Button disabled={isBusy && loadingAction !== "lock"} loading={loadingAction === "lock"} onClick={handleLockToggle} size="sm" variant="secondary">
+          {room.isLocked ? <Unlock size={14} /> : <Lock size={14} />}
           {room.isLocked ? "Unlock" : "Lock"}
         </Button>
-        <Button onClick={() => setActiveModal("close")} size="sm" variant="danger">
+        <Button disabled={isBusy} onClick={() => setActiveModal("close")} size="sm" variant="danger">
           <XCircle size={14} />
           Close
         </Button>
         <Button
-          disabled={participants.length === 0}
+          disabled={participants.length === 0 || isBusy}
           onClick={() => setActiveModal("kick")}
           size="sm"
           variant="secondary"
@@ -141,7 +148,7 @@ const HostControls = ({ room, session, onRoomUpdate, onRoomClosed, onNotify }) =
           <>
             <Button onClick={closeModal} size="sm" variant="secondary">Cancel</Button>
             <Button
-              disabled={roomName.trim().length < 3}
+              disabled={roomName.trim().length < 3 || roomName.trim() === room.roomName}
               loading={loadingAction === "rename"}
               onClick={handleRename}
               size="sm"

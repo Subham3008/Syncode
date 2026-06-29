@@ -12,6 +12,11 @@ import {
   setRoomLock
 } from "./room.service.js";
 import { toRoomDTO, toRoomSessionDTO } from "./room.dto.js";
+import { SOCKET_EVENTS } from "../../constants/socketEvents.js";
+import {
+  broadcastRoomState,
+  notifyKickedParticipant
+} from "../../sockets/room.broadcast.js";
 
 const sendResponse = (res, response) => {
   res.status(response.statusCode).json({
@@ -20,6 +25,8 @@ const sendResponse = (res, response) => {
     data: response.data
   });
 };
+
+const getSocketServer = (req) => req.app.get("io");
 
 export const createRoomController = asyncHandler(async (req, res) => {
   const { room, sessionUser } = await createRoom(req.body);
@@ -65,15 +72,20 @@ export const renameRoomController = asyncHandler(async (req, res) => {
     roomName: req.body.roomName
   });
 
+  broadcastRoomState(getSocketServer(req), room, SOCKET_EVENTS.ROOM_RENAMED);
   sendResponse(res, new ApiResponse(HTTP_STATUS.OK, toRoomDTO(room), "Room renamed successfully"));
 });
 
 export const kickParticipantController = asyncHandler(async (req, res) => {
-  const { room } = await kickParticipant({
+  const { room, kickedParticipant } = await kickParticipant({
     roomCode: req.params.roomCode,
     hostId: req.body.hostId,
     targetUserId: req.body.targetUserId
   });
+
+  const io = getSocketServer(req);
+  notifyKickedParticipant(io, room, kickedParticipant);
+  broadcastRoomState(io, room);
 
   sendResponse(
     res,
@@ -88,6 +100,7 @@ export const setRoomLockController = asyncHandler(async (req, res) => {
     isLocked: req.body.isLocked
   });
 
+  broadcastRoomState(getSocketServer(req), room, SOCKET_EVENTS.ROOM_LOCKED);
   sendResponse(
     res,
     new ApiResponse(
@@ -104,5 +117,6 @@ export const closeRoomController = asyncHandler(async (req, res) => {
     userId: req.body.userId
   });
 
+  broadcastRoomState(getSocketServer(req), room, SOCKET_EVENTS.ROOM_CLOSED);
   sendResponse(res, new ApiResponse(HTTP_STATUS.OK, toRoomDTO(room), "Room closed successfully"));
 });

@@ -140,16 +140,8 @@ const RoomPage = () => {
       socket.off(SOCKET_EVENTS.PARTICIPANTS_UPDATED, handleParticipantsUpdated);
       socket.off(SOCKET_EVENTS.ACTIVITY_UPDATED, handleActivityUpdated);
       socket.off(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
-
-      if (socket.connected) {
-        socket.emit(SOCKET_EVENTS.ROOM_LEAVE, {
-          roomCode: sessionRoomCode,
-          userId: sessionUserId
-        });
-        socket.disconnect();
-      }
     };
-  }, [clearSession, navigate, roomCode, sessionRoomCode, sessionUserId, status]);
+  }, [roomCode, sessionRoomCode, sessionUserId, status]);
 
   if (status === "invalid") {
     return <Navigate replace to={ROUTES.HOME} />;
@@ -186,30 +178,32 @@ const RoomPage = () => {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-canvas text-body">
+    <main className="flex h-screen overflow-hidden bg-canvas text-body">
       <Toast
         message={toast?.message}
         onClose={() => setToast(null)}
         tone={toast?.tone}
       />
 
-      <RoomHeader onLeave={handleLeave} room={room} session={session} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <RoomHeader onLeave={handleLeave} room={room} session={session} />
 
-      <section className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <EditorPlaceholder document={room.document} />
-        <PresencePlaceholder
-          activityLog={room.activityLog}
-          participants={room.participants}
+        <section className="flex min-h-0 flex-1 overflow-hidden">
+          <EditorPlaceholder document={room.document} />
+          <PresencePlaceholder
+            activityLog={room.activityLog}
+            participants={room.participants}
+          />
+        </section>
+
+        <HostControls
+          onNotify={setToast}
+          onRoomClosed={handleRoomClosed}
+          onRoomUpdate={setRoom}
+          room={room}
+          session={session}
         />
-      </section>
-
-      <HostControls
-        onNotify={setToast}
-        onRoomClosed={handleRoomClosed}
-        onRoomUpdate={setRoom}
-        room={room}
-        session={session}
-      />
+      </div>
     </main>
   );
 };

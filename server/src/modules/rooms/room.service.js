@@ -150,7 +150,19 @@ export const rejoinRoom = async ({ roomCode, userId }) => {
     throw new ApiError(HTTP_STATUS.NOT_FOUND, "Participant not found in this room");
   }
 
+  const wasOffline = !participant.isOnline;
   const lastSeen = now();
+
+  if (wasOffline) {
+    addActivity(room, {
+      type: "user_rejoined",
+      userId: participant.userId,
+      username: participant.username,
+      message: `${participant.username} rejoined the room`
+    });
+    await room.save();
+  }
+
   const updateResult = await Room.updateOne(
     {
       roomCode: normalizedRoomCode,
@@ -272,7 +284,7 @@ export const markParticipantOnline = async ({ roomCode, userId, socketId }) => {
   return { room, participant };
 };
 
-export const markParticipantOffline = async ({ roomCode, userId }) => {
+export const markParticipantOffline = async ({ roomCode, userId, socketId }) => {
   const room = await findRoomOrThrow(roomCode);
   const participant = room.participants.find((item) => item.userId === userId);
 
@@ -280,9 +292,38 @@ export const markParticipantOffline = async ({ roomCode, userId }) => {
     return null;
   }
 
+  if (socketId && participant.socketId && participant.socketId !== socketId) {
+    return { room, participant, ignoredStaleSocket: true };
+  }
+
   participant.socketId = null;
   participant.isOnline = false;
   participant.lastSeen = now();
+
+  await room.save();
+  return { room, participant };
+};
+
+export const leaveRoom = async ({ roomCode, userId, socketId }) => {
+  const room = await findRoomOrThrow(roomCode);
+  const participant = room.participants.find((item) => item.userId === userId);
+
+  if (!participant) {
+    return null;
+  }
+
+  if (socketId && participant.socketId && participant.socketId !== socketId) {
+    return { room, participant, ignoredStaleSocket: true };
+  }
+
+  if (participant.isHost) {
+    participant.socketId = null;
+    participant.isOnline = false;
+    participant.lastSeen = now();
+  } else {
+    room.participants = room.participants.filter((item) => item.userId !== userId);
+  }
+
   addActivity(room, {
     type: "user_left",
     userId,
@@ -291,5 +332,5 @@ export const markParticipantOffline = async ({ roomCode, userId }) => {
   });
 
   await room.save();
-  return { room, participant };
+  return { room, participant, removed: !participant.isHost };
 };
