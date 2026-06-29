@@ -122,3 +122,29 @@ export const roomSocketLeaveSchema = z.object({
   roomCode: roomCodeSchema,
   userId: userIdSchema()
 });
+
+export const hostRenameRoomSocketSchema = z.object({
+  roomCode: roomCodeSchema,
+  userId: userIdSchema(),
+  roomName: roomNameSchema
+});
+
+export const hostKickUserSocketSchema = z.object({
+  roomCode: roomCodeSchema,
+  hostId: userIdSchema("Host ID"),
+  targetUserId: userIdSchema("Target user ID")
+});
+
+export const hostLockRoomSocketSchema = z.object({
+  roomCode: roomCodeSchema,
+  userId: userIdSchema(),
+  isLocked: z.boolean({
+    required_error: "Lock state is required",
+    invalid_type_error: "Lock state must be true or false"
+  })
+});
+
+export const hostCloseRoomSocketSchema = z.object({
+  roomCode: roomCodeSchema,
+  userId: userIdSchema()
+});
