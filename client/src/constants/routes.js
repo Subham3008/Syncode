@@ -1,3 +1,6 @@
 export const ROUTES = {
-  HOME: "/"
+  HOME: "/",
+  ROOM: "/room/:roomCode"
 };
+
+export const buildRoomPath = (roomCode) => `/room/${roomCode}`;
