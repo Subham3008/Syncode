@@ -150,21 +150,34 @@ export const rejoinRoom = async ({ roomCode, userId }) => {
     throw new ApiError(HTTP_STATUS.NOT_FOUND, "Participant not found in this room");
   }
 
-  const wasOffline = !participant.isOnline;
-  participant.isOnline = true;
-  participant.lastSeen = now();
+  const lastSeen = now();
+  const updateResult = await Room.updateOne(
+    {
+      roomCode: normalizedRoomCode,
+      "participants.userId": normalizedUserId
+    },
+    {
+      $set: {
+        "participants.$.isOnline": true,
+        "participants.$.lastSeen": lastSeen
+      }
+    }
+  );
 
-  if (wasOffline) {
-    addActivity(room, {
-      type: "user_rejoined",
-      userId: normalizedUserId,
-      username: participant.username,
-      message: `${participant.username} rejoined the room`
-    });
+  if (!updateResult.matchedCount) {
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, "Participant not found in this room");
   }
 
-  await room.save();
-  return { room, sessionUser: participant };
+  const updatedRoom = await Room.findOne({ roomCode: normalizedRoomCode });
+  const updatedParticipant = updatedRoom?.participants.find(
+    (item) => item.userId === normalizedUserId
+  );
+
+  if (!updatedRoom || !updatedParticipant) {
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, "Participant not found in this room");
+  }
+
+  return { room: updatedRoom, sessionUser: updatedParticipant };
 };
 
 export const getRoomByCode = async (roomCode) => {
