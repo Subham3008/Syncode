@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import { corsOptions } from "../config/cors.js";
 import { SOCKET_EVENTS } from "../constants/socketEvents.js";
+import { isDevelopment } from "../config/env.js";
 import { logger } from "../utils/logger.js";
 import { registerEditorHandlers } from "./handlers/editor.handlers.js";
 import { registerHostHandlers } from "./handlers/host.handlers.js";
@@ -14,7 +15,9 @@ export const initializeSocketServer = (httpServer) => {
   });
 
   io.on(SOCKET_EVENTS.CONNECTION, (socket) => {
-    logger.info(`Socket connected: ${socket.id}`);
+    if (isDevelopment) {
+      logger.info(`Socket connected: ${socket.id}`);
+    }
 
     registerRoomHandlers(io, socket);
     registerHostHandlers(io, socket);
@@ -22,7 +25,9 @@ export const initializeSocketServer = (httpServer) => {
     registerPresenceHandlers(io, socket);
 
     socket.on(SOCKET_EVENTS.DISCONNECT, () => {
-      logger.info(`Socket disconnected: ${socket.id}`);
+      if (isDevelopment) {
+        logger.info(`Socket disconnected: ${socket.id}`);
+      }
     });
   });
 

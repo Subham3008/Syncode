@@ -1,16 +1,26 @@
 import { Link } from "react-router-dom";
+import { ArrowLeft, FileQuestion } from "lucide-react";
+import StatePanel from "../components/common/StatePanel.jsx";
 import { ROUTES } from "../constants/routes.js";
 
 const NotFoundPage = () => {
   return (
-    <main className="grid min-h-screen place-items-center bg-[#070b12] px-6 text-slate-100">
-      <div className="text-center">
-        <p className="text-sm uppercase tracking-[0.24em] text-cyan-200">404</p>
-        <h1 className="mt-3 text-4xl font-semibold">Page not found</h1>
-        <Link className="mt-6 inline-block text-cyan-200 hover:text-cyan-100" to={ROUTES.HOME}>
-          Back to Syncode
-        </Link>
-      </div>
+    <main className="grid min-h-screen place-items-center bg-canvas px-4 text-body">
+      <StatePanel
+        actions={(
+          <Link
+            className="inline-flex h-10 items-center justify-center gap-2 rounded border border-accent bg-accent px-4 text-sm font-medium text-white transition hover:bg-[#79b8ff]"
+            to={ROUTES.HOME}
+          >
+            <ArrowLeft size={15} />
+            Back to Syncode
+          </Link>
+        )}
+        description="The route you opened does not map to an active Syncode screen."
+        eyebrow="404"
+        icon={<FileQuestion size={22} />}
+        title="Page not found"
+      />
     </main>
   );
 };
