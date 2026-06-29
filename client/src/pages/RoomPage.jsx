@@ -3,6 +3,7 @@ import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import EditorPlaceholder from "../components/editor/EditorPlaceholder.jsx";
 import PresencePlaceholder from "../components/presence/PresencePlaceholder.jsx";
+import Toast from "../components/common/Toast.jsx";
 import HostControls from "../components/room/HostControls.jsx";
 import RoomHeader from "../components/room/RoomHeader.jsx";
 import { ROUTES } from "../constants/routes.js";
@@ -16,6 +17,7 @@ const RoomPage = () => {
   const [room, setRoom] = useState(null);
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
+  const [toast, setToast] = useState(null);
   const sessionRoomCode = session?.roomCode;
   const sessionUserId = session?.userId;
 
@@ -54,6 +56,13 @@ const RoomPage = () => {
     navigate(ROUTES.HOME);
   };
 
+  const handleRoomClosed = () => {
+    window.setTimeout(() => {
+      clearSession();
+      navigate(ROUTES.HOME);
+    }, 900);
+  };
+
   if (status === "loading") {
     return (
       <main className="grid min-h-screen place-items-center bg-canvas px-4 text-body">
@@ -72,6 +81,12 @@ const RoomPage = () => {
 
   return (
     <main className="flex min-h-screen flex-col bg-canvas text-body">
+      <Toast
+        message={toast?.message}
+        onClose={() => setToast(null)}
+        tone={toast?.tone}
+      />
+
       <RoomHeader onLeave={handleLeave} room={room} session={session} />
 
       <section className="flex min-h-0 flex-1 flex-col md:flex-row">
@@ -82,7 +97,13 @@ const RoomPage = () => {
         />
       </section>
 
-      <HostControls room={room} session={session} />
+      <HostControls
+        onNotify={setToast}
+        onRoomClosed={handleRoomClosed}
+        onRoomUpdate={setRoom}
+        room={room}
+        session={session}
+      />
     </main>
   );
 };
