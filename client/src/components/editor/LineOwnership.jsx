@@ -27,10 +27,10 @@ const LineOwnership = ({ lineCount = 1, lineOwnership = {}, scrollTop = 0 }) => 
   return (
     <div
       aria-label="Line ownership"
-      className="relative w-9 shrink-0 overflow-hidden border-r border-border bg-canvas/60"
+      className="relative hidden w-36 shrink-0 overflow-hidden border-r border-border bg-canvas/60 sm:block"
     >
       <div
-        className="px-1 py-4"
+        className="py-4"
         style={{ transform: `translateY(-${scrollTop}px)` }}
       >
         {lines.map((lineNumber) => {
@@ -41,23 +41,37 @@ const LineOwnership = ({ lineCount = 1, lineOwnership = {}, scrollTop = 0 }) => 
             : `Line ${lineNumber}`;
 
           return (
-            <div className="grid h-6 place-items-center" key={lineNumber} title={title}>
+            <div className="flex h-6 items-center px-2" key={lineNumber} title={title}>
               {owner ? (
-                <span
+                <div
                   aria-label={title}
-                  className="grid h-4 min-w-4 place-items-center rounded-sm border border-accent/40 bg-accent/15 px-1 font-mono text-[10px] font-semibold leading-none text-accent shadow-sm"
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-sm border border-accent/30 bg-accent/10 px-2 py-0.5 shadow-sm"
                   style={
                     owner.color
                       ? {
                           backgroundColor: `${owner.color}22`,
-                          borderColor: owner.color,
-                          color: owner.color
+                          borderColor: `${owner.color}88`
                         }
                       : undefined
                   }
                 >
-                  {initials || "*"}
-                </span>
+                  <span
+                    className="grid h-4 w-4 shrink-0 place-items-center rounded-sm bg-accent/20 font-mono text-[10px] font-bold leading-none text-accent"
+                    style={
+                      owner.color
+                        ? {
+                            backgroundColor: `${owner.color}33`,
+                            color: owner.color
+                          }
+                        : undefined
+                    }
+                  >
+                    {initials || "*"}
+                  </span>
+                  <span className="min-w-0 truncate text-[11px] font-medium text-body">
+                    {owner.username}
+                  </span>
+                </div>
               ) : null}
             </div>
           );

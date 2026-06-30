@@ -13,6 +13,24 @@ const getLineCount = (document) => {
   return document.split("\n").length;
 };
 
+const getOwnershipSummary = (lineOwnership) => {
+  if (!lineOwnership || typeof lineOwnership !== "object" || Array.isArray(lineOwnership)) {
+    return [];
+  }
+
+  const owners = new Map();
+
+  Object.values(lineOwnership).forEach((owner) => {
+    if (!owner?.userId || owners.has(owner.userId)) {
+      return;
+    }
+
+    owners.set(owner.userId, owner);
+  });
+
+  return Array.from(owners.values()).slice(0, 4);
+};
+
 const CodeEditor = ({
   initialDocument = "",
   initialVersion = 0,
@@ -38,6 +56,10 @@ const CodeEditor = ({
     initialVersion
   });
   const lineCount = useMemo(() => getLineCount(document), [document]);
+  const ownershipSummary = useMemo(
+    () => getOwnershipSummary(lineOwnership),
+    [lineOwnership]
+  );
   const canEdit = Boolean(roomCode && userId);
 
   const handleChange = (event) => {
@@ -59,15 +81,35 @@ const CodeEditor = ({
           </div>
         </div>
 
-        <button
-          aria-label="Refresh editor state"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded border border-border bg-elevated text-muted transition hover:border-accent hover:text-accent"
-          onClick={requestEditorState}
-          title="Refresh editor state"
-          type="button"
-        >
-          <RefreshCw size={15} />
-        </button>
+        <div className="flex min-w-0 items-center gap-2">
+          {ownershipSummary.length ? (
+            <div className="hidden min-w-0 items-center gap-1.5 rounded border border-border bg-canvas/70 px-2 py-1 md:flex">
+              {ownershipSummary.map((owner) => (
+                <span
+                  className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted"
+                  key={owner.userId}
+                  title={`${owner.username} edited lines`}
+                >
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent"
+                    style={owner.color ? { backgroundColor: owner.color } : undefined}
+                  />
+                  <span className="max-w-20 truncate">{owner.username}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          <button
+            aria-label="Refresh editor state"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded border border-border bg-elevated text-muted transition hover:border-accent hover:text-accent"
+            onClick={requestEditorState}
+            title="Refresh editor state"
+            type="button"
+          >
+            <RefreshCw size={15} />
+          </button>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
