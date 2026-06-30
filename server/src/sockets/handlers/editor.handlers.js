@@ -103,9 +103,12 @@ export const registerEditorHandlers = (io, socket) => {
       };
 
       logger.info(
-        `[editor-sync] Broadcast clientDeltaId=${appliedDelta.clientDeltaId} room=${sessionUser.roomCode} recv=${serverReceivedAt} redis=${appliedDelta.redisAppliedAt} broadcast=${serverBroadcastAt}`
+        `[editor-sync] Ack clientDeltaId=${appliedDelta.clientDeltaId} room=${sessionUser.roomCode} duplicate=${Boolean(appliedDelta.duplicate)} recv=${serverReceivedAt} redis=${appliedDelta.redisAppliedAt} broadcast=${serverBroadcastAt}`
       );
-      io.to(sessionUser.roomCode).emit(SOCKET_EVENTS.EDITOR_DELTA_APPLIED, appliedDelta);
+
+      if (!appliedDelta.duplicate) {
+        socket.to(sessionUser.roomCode).emit(SOCKET_EVENTS.EDITOR_DELTA_APPLIED, appliedDelta);
+      }
 
       if (typeof acknowledge === "function") {
         acknowledge({

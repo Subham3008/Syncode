@@ -1,16 +1,16 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Activity,
+  ChevronRight,
   Code2,
-  Database,
-  GitBranch,
   LockKeyhole,
-  Radio,
-  ShieldCheck,
-  Terminal
+  Play,
+  Search,
+  Settings,
+  SplitSquareHorizontal,
+  Terminal,
+  UsersRound
 } from "lucide-react";
-import Badge from "../components/common/Badge.jsx";
 import Toast from "../components/common/Toast.jsx";
 import CreateRoomForm from "../components/room/CreateRoomForm.jsx";
 import JoinRoomForm from "../components/room/JoinRoomForm.jsx";
@@ -18,18 +18,61 @@ import { buildRoomPath } from "../constants/routes.js";
 import { createRoom, joinRoom } from "../services/room.service.js";
 import { useRoomSession } from "../hooks/useRoomSession.js";
 
-const featureChips = [
-  { label: "Live Rooms", icon: Radio, tone: "success" },
-  { label: "Delta Sync", icon: GitBranch, tone: "accent" },
-  { label: "Host Controls", icon: ShieldCheck, tone: "warning" },
-  { label: "MongoDB Persistence", icon: Database, tone: "default" }
-];
+const initialDemoCode = `const room = {
+  code: "SYNC24",
+  file: "main.js",
+  users: ["Rohit", "Subham", "Aman"]
+};
 
-const stats = [
-  { label: "Session identity", value: "room-based" },
-  { label: "Transport", value: "Socket.io" },
-  { label: "Stack", value: "MERN" }
-];
+console.log("Room:", room.code);
+console.log("Editing:", room.file);
+console.log("Online:", room.users.join(", "));`;
+
+const createRunnerWorkerSource = () => `
+const formatValue = (value) => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    return value.message;
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+};
+
+self.onmessage = async (event) => {
+  const logs = [];
+  const consoleProxy = {
+    log: (...values) => logs.push(values.map(formatValue).join(" ")),
+    info: (...values) => logs.push(values.map(formatValue).join(" ")),
+    warn: (...values) => logs.push("Warning: " + values.map(formatValue).join(" ")),
+    error: (...values) => logs.push("Error: " + values.map(formatValue).join(" "))
+  };
+
+  try {
+    const run = new Function("console", '"use strict";\\n' + event.data.code);
+    const result = run(consoleProxy);
+    const resolved = result && typeof result.then === "function" ? await result : result;
+
+    if (resolved !== undefined) {
+      logs.push("Returned: " + formatValue(resolved));
+    }
+
+    self.postMessage({ ok: true, logs });
+  } catch (error) {
+    self.postMessage({
+      ok: false,
+      logs,
+      error: error && error.message ? error.message : String(error)
+    });
+  }
+};
+`;
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -40,12 +83,63 @@ const HomePage = () => {
   const [loadingAction, setLoadingAction] = useState("");
   const [errors, setErrors] = useState({});
   const [toast, setToast] = useState(null);
+  const [demoCode, setDemoCode] = useState(initialDemoCode);
+  const [demoOutput, setDemoOutput] = useState([
+    "Click Run to execute this JavaScript preview."
+  ]);
+  const [isRunningDemo, setIsRunningDemo] = useState(false);
 
   const createDisabled = useMemo(() => createUsername.trim().length < 2, [createUsername]);
   const joinDisabled = useMemo(
     () => joinUsername.trim().length < 2 || roomCode.trim().length !== 6,
     [joinUsername, roomCode]
   );
+  const demoLineNumbers = useMemo(
+    () => demoCode.split("\n").map((_, index) => index + 1),
+    [demoCode]
+  );
+
+  const runDemoCode = () => {
+    setIsRunningDemo(true);
+    setDemoOutput(["Running JavaScript..."]);
+
+    const workerUrl = URL.createObjectURL(
+      new Blob([createRunnerWorkerSource()], { type: "text/javascript" })
+    );
+    const worker = new Worker(workerUrl);
+    const timeoutId = window.setTimeout(() => {
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+      setIsRunningDemo(false);
+      setDemoOutput(["Execution stopped: script took too long."]);
+    }, 2500);
+
+    worker.onmessage = (event) => {
+      window.clearTimeout(timeoutId);
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+      setIsRunningDemo(false);
+
+      const logs = Array.isArray(event.data.logs) ? event.data.logs : [];
+
+      if (!event.data.ok) {
+        setDemoOutput([...logs, `Error: ${event.data.error || "JavaScript execution failed"}`]);
+        return;
+      }
+
+      setDemoOutput(logs.length ? logs : ["Done. No output was written."]);
+    };
+
+    worker.onerror = (error) => {
+      window.clearTimeout(timeoutId);
+      worker.terminate();
+      URL.revokeObjectURL(workerUrl);
+      setIsRunningDemo(false);
+      setDemoOutput([`Error: ${error.message || "JavaScript execution failed"}`]);
+    };
+
+    worker.postMessage({ code: demoCode });
+  };
 
   const handleRoomSuccess = (sessionPayload, message) => {
     const session = saveSession(sessionPayload);
@@ -89,119 +183,166 @@ const HomePage = () => {
   };
 
   return (
-    <main className="min-h-screen text-body">
+    <main className="min-h-screen bg-[#0d1117] font-sans text-body">
       <Toast
         message={toast?.message}
         onClose={() => setToast(null)}
         tone={toast?.tone}
       />
 
-      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-border bg-surface/95 px-4 backdrop-blur">
-        <div className="flex items-center gap-2">
-          <div className="grid h-8 w-8 place-items-center rounded border border-border bg-elevated text-accent">
-            <Code2 size={18} />
+      <header className="flex h-11 items-center justify-between border-b border-[#2b313a] bg-[#181f2a] px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
+            <span className="h-3 w-3 rounded-full bg-[#ffbd2e]" />
+            <span className="h-3 w-3 rounded-full bg-[#28c840]" />
           </div>
-          <span className="text-sm font-semibold text-heading">Syncode</span>
+          <div className="hidden h-5 w-px bg-border sm:block" />
+          <div className="flex min-w-0 items-center gap-2 text-heading">
+            <Code2 size={17} className="text-accent" />
+            <span className="truncate text-sm font-semibold">Syncode</span>
+          </div>
         </div>
-        <Badge tone="success">
-          <span className="h-2 w-2 rounded-sm bg-success shadow-[0_0_12px_rgba(63,185,80,0.4)]" />
-          Live-ready architecture
-        </Badge>
+        <p className="hidden truncate font-mono text-xs text-muted md:block">
+          shared-workspace / main.js
+        </p>
+        <span className="rounded border border-border bg-[#0d1117] px-2 py-1 font-mono text-[11px] text-muted">
+          No login
+        </span>
       </header>
 
-      <section className="mx-auto grid min-h-[calc(100vh-56px)] w-full max-w-7xl gap-8 px-4 py-8 lg:grid-cols-[minmax(0,1fr)_460px] lg:items-center lg:px-8">
-        <div className="max-w-3xl">
-          <div className="mb-5 inline-flex items-center gap-2 rounded border border-border bg-surface px-3 py-2 text-xs font-medium text-muted shadow-xl shadow-black/20">
-            <Activity size={15} className="text-accent" />
-            Collaborative room management
+      <section className="grid min-h-[calc(100vh-44px)] grid-cols-1 overflow-hidden lg:grid-cols-[56px_minmax(0,1fr)_420px]">
+        <aside className="hidden border-r border-[#2b313a] bg-[#111820] py-3 lg:block">
+          <div className="grid gap-2">
+            {[Code2, Search, UsersRound, SplitSquareHorizontal, Settings].map((Icon, index) => (
+              <button
+                aria-label={`Workspace tool ${index + 1}`}
+                className={`mx-auto grid h-10 w-10 place-items-center rounded text-muted transition hover:bg-[#1f2937] hover:text-heading ${
+                  index === 0 ? "bg-[#1f2937] text-heading" : ""
+                }`}
+                key={index}
+                type="button"
+              >
+                <Icon size={19} />
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <div className="flex min-h-0 flex-col">
+          <div className="flex h-10 items-center border-b border-[#2b313a] bg-[#111820]">
+            <div className="flex h-full items-center gap-2 border-r border-[#2b313a] bg-[#0d1117] px-4 text-xs text-heading">
+              <Code2 size={14} className="text-accent" />
+              main.js
+            </div>
+            <div className="hidden h-full items-center gap-2 border-r border-[#2b313a] px-4 text-xs text-muted sm:flex">
+              room.json
+            </div>
           </div>
 
-          <h1 className="max-w-3xl text-5xl font-semibold tracking-normal text-heading md:text-7xl">
-            Syncode rooms for serious hackathon collaboration.
-          </h1>
-          <p className="mt-5 max-w-2xl text-xl leading-8 text-body">
-            Build together. Ship faster.
-          </p>
-          <p className="mt-4 max-w-2xl text-sm leading-6 text-muted">
-            Create a room, share the six-character code, and keep host authority tied to the room session without passwords or OAuth.
-          </p>
-
-          <div className="mt-8 flex flex-wrap gap-3">
-            {featureChips.map((feature) => {
-              const Icon = feature.icon;
-
-              return (
-                <Badge key={feature.label} tone={feature.tone}>
-                  <Icon size={14} />
-                  {feature.label}
-                </Badge>
-              );
-            })}
-          </div>
-
-          <div className="mt-10 overflow-hidden rounded-md border border-border bg-surface shadow-2xl shadow-black/30">
-            <div className="flex h-10 items-center justify-between border-b border-border bg-elevated px-4">
-              <div className="flex items-center gap-2 text-xs text-muted">
-                <Terminal size={14} className="text-accent" />
-                room-session.js
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-sm bg-danger" />
-                <span className="h-2 w-2 rounded-sm bg-warning" />
-                <span className="h-2 w-2 rounded-sm bg-success" />
+          <div className="grid flex-1 content-center gap-8 px-5 py-8 sm:px-8 lg:px-10">
+            <div className="max-w-3xl">
+              <p className="mb-4 inline-flex items-center gap-2 rounded border border-[#2b313a] bg-[#111820] px-3 py-1.5 font-mono text-xs text-muted">
+                <span className="h-2 w-2 rounded-full bg-success" />
+                single-file collaborative editor
+              </p>
+              <h1 className="max-w-3xl text-[clamp(2.25rem,5vw,5.4rem)] font-bold leading-[0.98] text-heading">
+                Open a shared coding room in seconds.
+              </h1>
+              <p className="mt-5 max-w-2xl text-base leading-7 text-[#b8c2cc] sm:text-lg">
+                Create a workspace, share the six-character code, and let everyone edit the same file together with clear room ownership.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3 text-sm text-muted">
+                <span className="inline-flex items-center gap-2">
+                  <ChevronRight size={15} className="text-accent" />
+                  Keep one source of truth for the room file
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <ChevronRight size={15} className="text-accent" />
+                  Rejoin from the same browser tab after refresh
+                </span>
               </div>
             </div>
-            <div className="grid gap-0 md:grid-cols-[1fr_220px]">
-              <div className="p-5 font-mono text-sm leading-7 text-muted">
-                <p><span className="text-accent">const</span> <span className="text-heading">identity</span> = <span className="text-[#7ee787]">"displayName + generatedUserId"</span>;</p>
-                <p><span className="text-accent">await</span> room.create({"{"} host: <span className="text-[#7ee787]">"Subham"</span> {"}"});</p>
-                <p>socket.emit(<span className="text-[#7ee787]">"room:rejoin"</span>, session);</p>
+
+            <div className="overflow-hidden rounded border border-[#2b313a] bg-[#0d1117] shadow-2xl shadow-black/35">
+              <div className="flex h-9 items-center justify-between border-b border-[#2b313a] bg-[#111820] px-3">
+                <div className="flex items-center gap-2 font-mono text-xs text-muted">
+                  <Terminal size={14} className="text-accent" />
+                  editor preview
+                </div>
+                <button
+                  aria-label="Run JavaScript preview"
+                  className="inline-flex h-7 items-center gap-1.5 rounded border border-border px-2 font-mono text-[11px] text-muted transition hover:border-accent hover:text-heading disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isRunningDemo}
+                  onClick={runDemoCode}
+                  type="button"
+                >
+                  <Play size={13} />
+                  Run
+                </button>
               </div>
-              <div className="border-t border-border p-4 md:border-l md:border-t-0">
-                {stats.map((item) => (
-                  <div className="flex items-center justify-between border-b border-border py-3 last:border-b-0" key={item.label}>
-                    <span className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">{item.label}</span>
-                    <span className="font-mono text-xs text-heading">{item.value}</span>
+              <div className="grid min-h-[310px] grid-rows-[minmax(190px,1fr)_auto]">
+                <div className="grid grid-cols-[3.25rem_minmax(0,1fr)]">
+                  <div className="select-none border-r border-[#1f2937] bg-[#0b1017] px-2 py-4 text-right font-mono text-sm leading-6 text-[#5b6470]">
+                    {demoLineNumbers.map((lineNumber) => (
+                      <div key={lineNumber}>{lineNumber}</div>
+                    ))}
                   </div>
-                ))}
+                  <textarea
+                    aria-label="JavaScript preview editor"
+                    className="min-h-[190px] resize-none overflow-auto border-0 bg-[#0d1117] px-4 py-4 font-mono text-sm leading-6 text-[#c9d1d9] caret-accent outline-none selection:bg-accent/30"
+                    onChange={(event) => setDemoCode(event.target.value)}
+                    spellCheck={false}
+                    value={demoCode}
+                    wrap="off"
+                  />
+                </div>
+                <div className="border-t border-[#2b313a] bg-[#070b10]">
+                  <div className="flex h-8 items-center gap-2 border-b border-[#1f2937] px-3 font-mono text-xs text-muted">
+                    <Terminal size={13} className="text-accent" />
+                    output
+                  </div>
+                  <pre className="min-h-[74px] whitespace-pre-wrap px-4 py-3 font-mono text-xs leading-5 text-[#b8c2cc]">
+                    {demoOutput.join("\n")}
+                  </pre>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-4">
-          <div className="rounded-md border border-border bg-surface p-2 shadow-2xl shadow-black/40">
-            <div className="flex items-center justify-between border-b border-border px-3 py-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">Room access</p>
-                <h2 className="mt-1 text-base font-semibold text-heading">Create or join instantly</h2>
-              </div>
-              <div className="grid h-9 w-9 place-items-center rounded border border-border bg-canvas text-accent">
-                <LockKeyhole size={17} />
-              </div>
+        <aside className="border-l border-[#2b313a] bg-[#111820] p-4 lg:p-5">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <div>
+              <p className="font-mono text-xs uppercase text-muted">Room access</p>
+              <h2 className="mt-1 text-xl font-semibold text-heading">Start working together</h2>
             </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
-              <CreateRoomForm
-                disabled={createDisabled}
-                error={errors.create}
-                loading={loadingAction === "create"}
-                onSubmit={handleCreateRoom}
-                onUsernameChange={setCreateUsername}
-                username={createUsername}
-              />
-              <JoinRoomForm
-                disabled={joinDisabled}
-                error={errors.join}
-                loading={loadingAction === "join"}
-                onRoomCodeChange={setRoomCode}
-                onSubmit={handleJoinRoom}
-                onUsernameChange={setJoinUsername}
-                roomCode={roomCode}
-                username={joinUsername}
-              />
+            <div className="grid h-9 w-9 place-items-center rounded border border-border bg-[#0d1117] text-accent">
+              <LockKeyhole size={17} />
             </div>
           </div>
-        </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
+            <CreateRoomForm
+              disabled={createDisabled}
+              error={errors.create}
+              loading={loadingAction === "create"}
+              onSubmit={handleCreateRoom}
+              onUsernameChange={setCreateUsername}
+              username={createUsername}
+            />
+            <JoinRoomForm
+              disabled={joinDisabled}
+              error={errors.join}
+              loading={loadingAction === "join"}
+              onRoomCodeChange={setRoomCode}
+              onSubmit={handleJoinRoom}
+              onUsernameChange={setJoinUsername}
+              roomCode={roomCode}
+              username={joinUsername}
+            />
+          </div>
+        </aside>
       </section>
     </main>
   );

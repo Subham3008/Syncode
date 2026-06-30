@@ -1,6 +1,6 @@
 import { toParticipantDTO } from "../rooms/room.dto.js";
 import { SOCKET_EVENTS } from "../../constants/socketEvents.js";
-import { redisClient } from "../../config/redis.js";
+import { hasRedisConnection, redisClient } from "../../config/redis.js";
 import { logger } from "../../utils/logger.js";
 
 const TYPING_TTL_MS = 2500;
@@ -20,6 +20,10 @@ const getTypingKey = (roomCode, participantId) =>
   `room:${normalizeRoomCode(roomCode)}:typing:${participantId}`;
 
 const writeRedisPresence = (operation) => {
+  if (!hasRedisConnection()) {
+    return;
+  }
+
   operation().catch((error) => {
     logger.warn(`Redis presence update failed: ${error.message}`);
   });

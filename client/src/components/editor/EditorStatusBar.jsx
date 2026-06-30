@@ -18,6 +18,14 @@ const getStatus = ({ editorError, isSaving, isSynced, syncStatus }) => {
     };
   }
 
+  if (syncStatus === "offline") {
+    return {
+      icon: WifiOff,
+      label: "Offline",
+      className: "text-danger"
+    };
+  }
+
   if (syncStatus === "interrupted") {
     return {
       icon: AlertTriangle,

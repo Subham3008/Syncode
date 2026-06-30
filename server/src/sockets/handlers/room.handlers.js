@@ -19,6 +19,7 @@ import {
   upsertPresenceParticipant
 } from "../../modules/presence/presence.service.js";
 import { flushDocumentToMongo } from "../../modules/documents/document.persistence.js";
+import { logger } from "../../utils/logger.js";
 import {
   addSocketToRoom,
   addSocketUser,
@@ -96,7 +97,13 @@ const scheduleParticipantOffline = ({ io, roomCode, userId, socketId }) => {
       }
 
       if (roomCode && getRoomSockets(roomCode).size === 0) {
-        await flushDocumentToMongo(roomCode);
+        try {
+          await flushDocumentToMongo(roomCode);
+        } catch (error) {
+          logger.error(
+            `[rooms] Failed to flush room ${roomCode} after disconnect: ${error.message}`
+          );
+        }
       }
     } catch {
       // The room may have been closed or the participant removed while the grace timer was pending.
@@ -112,6 +119,25 @@ const attachSocketToRoom = async ({ io, socket, room, sessionUser }) => {
     userId: sessionUser.userId
   });
 
+  const previousSocketId = getSocketIdByUser(sessionUser.userId);
+
+  if (previousSocketId && previousSocketId !== socket.id) {
+    const previousUser = getUserBySocket(previousSocketId);
+
+    if (previousUser?.roomCode) {
+      io.sockets.sockets.get(previousSocketId)?.leave(previousUser.roomCode);
+    }
+
+    clearSocketFromAllMaps(previousSocketId);
+  }
+
+  const existingUser = getUserBySocket(socket.id);
+
+  if (existingUser?.roomCode && existingUser.roomCode !== room.roomCode) {
+    socket.leave(existingUser.roomCode);
+    removeSocketFromRoom(existingUser.roomCode, socket.id);
+  }
+
   socket.join(room.roomCode);
   addSocketUser(socket.id, {
     color: sessionUser.color,
@@ -120,6 +146,9 @@ const attachSocketToRoom = async ({ io, socket, room, sessionUser }) => {
     username: sessionUser.username
   });
   addSocketToRoom(room.roomCode, socket.id);
+  logger.info(
+    `[room-socket] joined socket=${socket.id} user=${sessionUser.userId} room=${room.roomCode}`
+  );
 
   const { room: onlineRoom, participant } = await markParticipantOnline({
     roomCode: room.roomCode,
@@ -204,7 +233,13 @@ const leaveSocketRoom = async ({ io, socket, roomCode, userId }) => {
   removeSocketFromRoom(userData.roomCode, socket.id);
 
   if (userData.roomCode && getRoomSockets(userData.roomCode).size === 0) {
-    await flushDocumentToMongo(userData.roomCode);
+    try {
+      await flushDocumentToMongo(userData.roomCode);
+    } catch (error) {
+      logger.error(
+        `[rooms] Failed to flush room ${userData.roomCode} after leave: ${error.message}`
+      );
+    }
   }
 };
 

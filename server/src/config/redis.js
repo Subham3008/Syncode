@@ -58,8 +58,15 @@ export const connectRedisSubscriber = async () => {
     return redisSubscriber;
   }
 
-  await redisSubscriber.connect();
-  return redisSubscriber;
+  try {
+    await redisSubscriber.connect();
+    return redisSubscriber;
+  } catch (error) {
+    logger.warn(
+      `Redis subscriber unavailable; Socket.IO will use local adapter: ${error.message}`
+    );
+    return null;
+  }
 };
 
 export const hasRedisConnection = () => Boolean(redisClient.isReady);

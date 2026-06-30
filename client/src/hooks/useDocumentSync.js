@@ -40,16 +40,20 @@ const normalizeCharOwnership = (charOwnership) => {
 const SYNC_STATUSES = {
   FAILED: "failed",
   INTERRUPTED: "interrupted",
+  OFFLINE: "offline",
   RECONNECTING: "reconnecting",
   SAVING: "saving",
   SYNCED: "synced"
 };
 
-const EDITOR_ACK_TIMEOUT_MS = 7000;
+const EDITOR_ACK_TIMEOUT_MS = 5000;
 const EDITOR_FLUSH_DELAY_MS = 40;
 const EDITOR_RETRY_DELAY_MS = 650;
 const EDITOR_MAX_RETRY_ATTEMPTS = 3;
 const HANDLED_DELTA_LIMIT = 400;
+
+const isDeltaRejectionRecoverable = (message = "") =>
+  /ahead|baseversion|bounds|history|stale|join the room|conflict|version/i.test(message);
 
 const createClientDeltaId = () => {
   if (window.crypto?.randomUUID) {
@@ -254,10 +258,12 @@ export const useDocumentSync = ({
     let nextMessage = "";
 
     if (!socket.connected) {
-      nextStatus = SYNC_STATUSES.RECONNECTING;
+      nextStatus = socket.active === false
+        ? SYNC_STATUSES.OFFLINE
+        : SYNC_STATUSES.RECONNECTING;
       nextMessage = hasPendingChanges
-        ? "Reconnecting with unsynced editor changes"
-        : "Reconnecting to the editor";
+        ? "Connection interrupted with unsynced editor changes"
+        : "Connecting to the editor";
     } else if (issue?.level === SYNC_STATUSES.FAILED) {
       nextStatus = SYNC_STATUSES.FAILED;
       nextMessage = issue.message || "Sync failed";
@@ -652,15 +658,31 @@ export const useDocumentSync = ({
   const handleDeltaRejected = useCallback(
     (clientDeltaId, response = {}) => {
       const message = response.message || "Sync failed";
+      const pendingPayload = pendingDeltasRef.current.get(clientDeltaId);
 
       if (clientDeltaId) {
         removeQueuedDelta(clientDeltaId);
       }
 
+      if (pendingPayload && isDeltaRejectionRecoverable(message)) {
+        pendingPayload.needsRetry = true;
+        pendingPayload.sentAt = 0;
+        queueDeltaForSend(clientDeltaId);
+        setRecoverableSyncIssue("Sync interrupted. Refreshing latest document and retrying changes.");
+        requestEditorState({ reason: "delta-rejected" });
+        return;
+      }
+
       setFailedSyncIssue(message);
       requestEditorState({ reason: "delta-rejected" });
     },
-    [removeQueuedDelta, requestEditorState, setFailedSyncIssue]
+    [
+      queueDeltaForSend,
+      removeQueuedDelta,
+      requestEditorState,
+      setFailedSyncIssue,
+      setRecoverableSyncIssue
+    ]
   );
 
   const handleDeltaAckTimeout = useCallback(
@@ -758,17 +780,31 @@ export const useDocumentSync = ({
       return;
     }
 
-    const queuedDeltaIds = outgoingDeltaIdsRef.current;
-    outgoingDeltaIdsRef.current = [];
+    const hasInFlightDelta = Array.from(pendingDeltasRef.current.values()).some(
+      (pendingPayload) => pendingPayload.sentAt && !pendingPayload.needsRetry
+    );
 
-    for (const clientDeltaId of queuedDeltaIds) {
+    if (hasInFlightDelta) {
+      updateSyncState();
+      return;
+    }
+
+    while (outgoingDeltaIdsRef.current.length > 0) {
+      const clientDeltaId = outgoingDeltaIdsRef.current.shift();
       const pendingPayload = pendingDeltasRef.current.get(clientDeltaId);
 
-      if (!pendingPayload || (pendingPayload.sentAt && !pendingPayload.needsRetry)) {
+      if (!pendingPayload) {
         continue;
       }
 
+      if (pendingPayload.sentAt && !pendingPayload.needsRetry) {
+        outgoingDeltaIdsRef.current.unshift(clientDeltaId);
+        updateSyncState();
+        return;
+      }
+
       emitPendingDelta(pendingPayload);
+      break;
     }
 
     updateSyncState();

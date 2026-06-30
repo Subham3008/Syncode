@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import CodeEditor from "../components/editor/CodeEditor.jsx";
@@ -27,16 +27,24 @@ const RoomPage = () => {
   const [toast, setToast] = useState(null);
   const [isSocketRoomReady, setIsSocketRoomReady] = useState(false);
   const [typingUsers, setTypingUsers] = useState([]);
+  const shouldDisconnectOnUnmountRef = useRef(true);
   const sessionRoomCode = session?.roomCode;
   const sessionUserId = session?.userId;
   const sessionUsername = session?.username;
 
   const redirectHomeSoon = () => {
     window.setTimeout(() => {
+      shouldDisconnectOnUnmountRef.current = true;
       clearSession();
       navigate(ROUTES.HOME);
     }, 900);
   };
+
+  useEffect(() => () => {
+    if (shouldDisconnectOnUnmountRef.current && socket.connected) {
+      socket.disconnect();
+    }
+  }, []);
 
   useEffect(() => {
     const restoreRoom = async () => {
@@ -77,6 +85,13 @@ const RoomPage = () => {
     setIsSocketRoomReady(false);
 
     const rejoinSocketRoom = () => {
+      if (import.meta.env.DEV) {
+        console.debug("[room-socket] rejoin", {
+          roomCode: sessionRoomCode,
+          userId: sessionUserId
+        });
+      }
+
       socket.emit(SOCKET_EVENTS.ROOM_REJOIN, {
         roomCode: sessionRoomCode,
         userId: sessionUserId
@@ -307,13 +322,6 @@ const RoomPage = () => {
       socket.off(SOCKET_EVENTS.TYPING_UPDATED, handleTypingUpdated);
       socket.off(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
       socket.off(SOCKET_EVENTS.PRESENCE_ERROR, handlePresenceError);
-
-      if (socket.connected) {
-        socket.disconnect();
-      }
-
-      setIsSocketRoomReady(false);
-      setTypingUsers([]);
     };
   }, [clearSession, navigate, normalizedRouteRoomCode, sessionRoomCode, sessionUserId, status]);
 
@@ -323,6 +331,8 @@ const RoomPage = () => {
 
   const handleLeave = () => {
     const finishLeave = () => {
+      shouldDisconnectOnUnmountRef.current = true;
+
       if (socket.connected) {
         socket.disconnect();
       }

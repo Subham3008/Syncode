@@ -19,6 +19,8 @@ import {
   removeRoomPresence
 } from "../../modules/presence/presence.service.js";
 import {
+  clearSocketFromAllMaps,
+  getRoomSockets,
   getSocketIdByUser,
   removeSocketFromRoom,
   removeSocketUser
@@ -138,6 +140,12 @@ export const registerHostHandlers = (io, socket) => {
       const room = await closeRoom(data);
       removeRoomPresence({ io, roomCode: room.roomCode });
       broadcastRoomState(io, room, SOCKET_EVENTS.ROOM_CLOSED);
+
+      for (const socketId of Array.from(getRoomSockets(room.roomCode))) {
+        io.sockets.sockets.get(socketId)?.leave(room.roomCode);
+        clearSocketFromAllMaps(socketId);
+      }
+
       acknowledgeSuccess(acknowledge, room);
     } catch (error) {
       emitHostError(socket, error);

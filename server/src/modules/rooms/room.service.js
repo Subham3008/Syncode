@@ -9,6 +9,7 @@ import { assertCanKick, assertIsHost } from "../host/host.service.js";
 import { flushDocumentToMongo } from "../documents/document.persistence.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { generateRoomCode } from "../../utils/generateRoomCode.js";
+import { logger } from "../../utils/logger.js";
 
 const createUserId = () => `user_${nanoid(12)}`;
 
@@ -244,7 +245,15 @@ export const closeRoom = async ({ roomCode, userId }) => {
   });
 
   await room.save();
-  await flushDocumentToMongo(room.roomCode);
+
+  try {
+    await flushDocumentToMongo(room.roomCode);
+  } catch (error) {
+    logger.error(
+      `[rooms] Room ${room.roomCode} closed but document snapshot flush failed: ${error.message}`
+    );
+  }
+
   return room;
 };
 
@@ -262,6 +271,7 @@ export const markParticipantOnline = async ({ roomCode, userId, socketId }) => {
   participant.isOnline = true;
   participant.lastSeen = now();
 
+  await room.save();
   return { room, participant };
 };
 
@@ -281,6 +291,7 @@ export const markParticipantOffline = async ({ roomCode, userId, socketId = null
   participant.isOnline = false;
   participant.lastSeen = now();
 
+  await room.save();
   return { room, participant };
 };
 
@@ -302,7 +313,13 @@ export const removeParticipantFromRoom = async ({ roomCode, userId }) => {
 
   await room.save();
   if (room.participants.length === 0) {
-    await flushDocumentToMongo(room.roomCode);
+    try {
+      await flushDocumentToMongo(room.roomCode);
+    } catch (error) {
+      logger.error(
+        `[rooms] Last participant left room ${room.roomCode} but document snapshot flush failed: ${error.message}`
+      );
+    }
   }
   return { room, participant };
 };

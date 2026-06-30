@@ -9,7 +9,7 @@ import {
   getDirtyDeltaCount
 } from "./document.cache.js";
 
-const SAVE_DELAY_MS = 3000;
+const SAVE_DELAY_MS = 1500;
 const DELTA_FLUSH_THRESHOLD = 40;
 
 const saveTimers = new Map();
