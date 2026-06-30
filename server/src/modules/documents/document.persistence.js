@@ -4,6 +4,7 @@ import { Room } from "../../models/room.model.js";
 import { ApiError } from "../../utils/ApiError.js";
 import {
   clearDocumentDirty,
+  getCharOwnership,
   getCachedDocument,
   getCachedVersion,
   getLineOwnership,
@@ -47,6 +48,7 @@ const persistRoomDocument = async (roomCode) => {
   const version = await getCachedVersion(roomCode);
   const recentDeltas = await getRecentDeltas(roomCode);
   const lineOwnership = await getLineOwnership(roomCode);
+  const charOwnership = await getCharOwnership(roomCode);
   const persistedRecentDeltas = recentDeltas.slice(-MAX_RECENT_DELTAS);
   const updateResult = await Room.updateOne(
     { roomCode },
@@ -56,6 +58,7 @@ const persistRoomDocument = async (roomCode) => {
         documentVersion: version,
         recentDeltas: persistedRecentDeltas,
         lineOwnership,
+        charOwnership,
         updatedAt: new Date()
       }
     }
@@ -81,6 +84,7 @@ const persistRoomDocument = async (roomCode) => {
     latestVersion,
     recentDeltas: persistedRecentDeltas,
     lineOwnership,
+    charOwnership,
     isFullyPersisted
   };
 };

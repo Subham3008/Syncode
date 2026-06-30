@@ -1,6 +1,7 @@
 import { HTTP_STATUS } from "../../constants/httpStatus.js";
 import { ApiError } from "../../utils/ApiError.js";
 import {
+  getCharOwnership,
   getCachedDocument,
   getCachedVersion,
   getLineOwnership,
@@ -9,11 +10,16 @@ import {
   markDocumentDirty,
   pushRecentDelta,
   setCachedDocument,
+  setCharOwnership,
   setLineOwnership
 } from "./document.cache.js";
 import { resolveDeltaConflict } from "./conflict.service.js";
 import { applyDeltaToDocument, validateDelta } from "./delta.service.js";
 import { scheduleDocumentSave } from "./document.persistence.js";
+import {
+  normalizeCharOwnership,
+  updateCharOwnership
+} from "./charOwnership.service.js";
 import { updateLineOwnership } from "./lineOwnership.service.js";
 
 const roomQueues = new Map();
@@ -136,6 +142,16 @@ const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
     username
   });
   const currentLineOwnership = await getLineOwnership(normalizedRoomCode);
+  const currentCharOwnership = await getCharOwnership(normalizedRoomCode);
+  const charOwnership = updateCharOwnership({
+    color,
+    charOwnership: currentCharOwnership,
+    document: currentDocument,
+    lineOwnership: currentLineOwnership,
+    delta: acceptedDelta,
+    userId,
+    username
+  });
   const lineOwnership = updateLineOwnership({
     color,
     lineOwnership: currentLineOwnership,
@@ -147,6 +163,7 @@ const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
   await setCachedDocument(normalizedRoomCode, nextDocument);
   await pushRecentDelta(normalizedRoomCode, deltaRecord);
   await setLineOwnership(normalizedRoomCode, lineOwnership);
+  await setCharOwnership(normalizedRoomCode, charOwnership);
   await markDocumentDirty(normalizedRoomCode);
   scheduleDocumentSave(normalizedRoomCode);
 
@@ -158,6 +175,7 @@ const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
     delta: toClientDelta(deltaRecord),
     lineNumber: deltaRecord.lineNumber,
     lineOwnership,
+    charOwnership,
     conflictResolved: resolvedPayload.conflictResolved,
     transformedBy: resolvedPayload.transformedBy,
     timestamp: deltaRecord.timestamp
@@ -170,13 +188,20 @@ export const getDocumentState = async (roomCode) => {
   const version = await getCachedVersion(normalizedRoomCode);
   const recentDeltas = await getRecentDeltas(normalizedRoomCode);
   const lineOwnership = await getLineOwnership(normalizedRoomCode);
+  const cachedCharOwnership = await getCharOwnership(normalizedRoomCode);
+  const charOwnership = normalizeCharOwnership({
+    charOwnership: cachedCharOwnership,
+    document,
+    lineOwnership
+  });
 
   return {
     roomCode: normalizedRoomCode,
     document,
     version,
     recentDeltas,
-    lineOwnership
+    lineOwnership,
+    charOwnership
   };
 };
 

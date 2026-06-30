@@ -14,14 +14,25 @@ const getLineCount = (document) => {
   return document.split("\n").length;
 };
 
-const getOwnershipSummary = (lineOwnership) => {
-  if (!lineOwnership || typeof lineOwnership !== "object" || Array.isArray(lineOwnership)) {
-    return [];
-  }
-
+const getOwnershipSummary = (lineOwnership, charOwnership) => {
   const owners = new Map();
 
-  Object.values(lineOwnership).forEach((owner) => {
+  if (Array.isArray(charOwnership)) {
+    charOwnership.forEach((owner) => {
+      if (!owner?.userId || owners.has(owner.userId)) {
+        return;
+      }
+
+      owners.set(owner.userId, owner);
+    });
+  }
+
+  const lineOwners =
+    lineOwnership && typeof lineOwnership === "object" && !Array.isArray(lineOwnership)
+      ? Object.values(lineOwnership)
+      : [];
+
+  lineOwners.forEach((owner) => {
     if (!owner?.userId || owners.has(owner.userId)) {
       return;
     }
@@ -41,6 +52,7 @@ const CodeEditor = ({
 }) => {
   const [editorScroll, setEditorScroll] = useState({ left: 0, top: 0 });
   const {
+    charOwnership,
     document,
     editorError,
     handleLocalChange,
@@ -58,8 +70,8 @@ const CodeEditor = ({
   });
   const lineCount = useMemo(() => getLineCount(document), [document]);
   const ownershipSummary = useMemo(
-    () => getOwnershipSummary(lineOwnership),
-    [lineOwnership]
+    () => getOwnershipSummary(lineOwnership, charOwnership),
+    [charOwnership, lineOwnership]
   );
   const canEdit = Boolean(roomCode && userId);
 
@@ -126,6 +138,7 @@ const CodeEditor = ({
 
         <div className="relative min-w-0 flex-1 bg-[#0b1017]">
           <ColoredDocumentOverlay
+            charOwnership={charOwnership}
             document={document}
             lineOwnership={lineOwnership}
             scrollLeft={editorScroll.left}

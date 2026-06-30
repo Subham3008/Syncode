@@ -53,16 +53,27 @@ const normalizeLineOwnership = (lineOwnership) => {
   return { ...lineOwnership };
 };
 
+const normalizeCharOwnership = (charOwnership, document = "") => {
+  const safeDocument = typeof document === "string" ? document : "";
+
+  if (!Array.isArray(charOwnership)) {
+    return [];
+  }
+
+  return charOwnership.slice(0, safeDocument.length);
+};
+
 export const getDocumentKey = (roomCode) => `room:${assertRoomCode(roomCode)}:document`;
 export const getVersionKey = (roomCode) => `room:${assertRoomCode(roomCode)}:version`;
 export const getRecentDeltasKey = (roomCode) => `room:${assertRoomCode(roomCode)}:recentDeltas`;
 export const getLineOwnershipKey = (roomCode) => `room:${assertRoomCode(roomCode)}:lineOwnership`;
+export const getCharOwnershipKey = (roomCode) => `room:${assertRoomCode(roomCode)}:charOwnership`;
 export const getDirtyKey = (roomCode) => `room:${assertRoomCode(roomCode)}:dirty`;
 
 export const hydrateDocumentCache = async (roomCode) => {
   const normalizedRoomCode = assertRoomCode(roomCode);
   const room = await Room.findOne({ roomCode: normalizedRoomCode })
-    .select("document documentVersion recentDeltas lineOwnership")
+    .select("document documentVersion recentDeltas lineOwnership charOwnership")
     .lean();
 
   if (!room) {
@@ -75,11 +86,13 @@ export const hydrateDocumentCache = async (roomCode) => {
     ? room.recentDeltas.slice(-RECENT_DELTAS_LIMIT)
     : [];
   const lineOwnership = normalizeLineOwnership(room.lineOwnership);
+  const charOwnership = normalizeCharOwnership(room.charOwnership, document);
 
   const multi = redisClient.multi();
   multi.set(getDocumentKey(normalizedRoomCode), document);
   multi.set(getVersionKey(normalizedRoomCode), String(version));
   multi.set(getLineOwnershipKey(normalizedRoomCode), JSON.stringify(lineOwnership));
+  multi.set(getCharOwnershipKey(normalizedRoomCode), JSON.stringify(charOwnership));
   multi.del(getRecentDeltasKey(normalizedRoomCode));
 
   for (const delta of recentDeltas) {
@@ -93,7 +106,8 @@ export const hydrateDocumentCache = async (roomCode) => {
     document,
     version,
     recentDeltas,
-    lineOwnership
+    lineOwnership,
+    charOwnership
   };
 };
 
@@ -176,6 +190,21 @@ export const setLineOwnership = async (roomCode, lineOwnership) => {
 
   await redisClient.set(getLineOwnershipKey(roomCode), JSON.stringify(safeLineOwnership));
   return safeLineOwnership;
+};
+
+export const getCharOwnership = async (roomCode) => {
+  const document = await getCachedDocument(roomCode);
+  const charOwnership = await redisClient.get(getCharOwnershipKey(roomCode));
+
+  return normalizeCharOwnership(parseJson(charOwnership, []), document);
+};
+
+export const setCharOwnership = async (roomCode, charOwnership) => {
+  const document = await getCachedDocument(roomCode);
+  const safeCharOwnership = normalizeCharOwnership(charOwnership, document);
+
+  await redisClient.set(getCharOwnershipKey(roomCode), JSON.stringify(safeCharOwnership));
+  return safeCharOwnership;
 };
 
 export const markDocumentDirty = async (roomCode) => {

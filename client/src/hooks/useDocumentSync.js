@@ -28,6 +28,14 @@ const normalizeLineOwnership = (lineOwnership) => {
   return { ...lineOwnership };
 };
 
+const normalizeCharOwnership = (charOwnership) => {
+  if (!Array.isArray(charOwnership)) {
+    return [];
+  }
+
+  return charOwnership;
+};
+
 export const useDocumentSync = ({
   roomCode,
   userId,
@@ -42,6 +50,7 @@ export const useDocumentSync = ({
   const [isSaving, setIsSaving] = useState(false);
   const [editorError, setEditorError] = useState("");
   const [lineOwnership, setLineOwnership] = useState({});
+  const [charOwnership, setCharOwnership] = useState([]);
   const versionRef = useRef(version);
   const connectionRef = useRef({
     roomCode: normalizedRoomCode,
@@ -65,6 +74,7 @@ export const useDocumentSync = ({
     setDocument(normalizeDocument(initialDocument));
     setVersion(normalizeVersion(initialVersion));
     setLineOwnership({});
+    setCharOwnership([]);
     setIsSynced(true);
     setIsSaving(false);
     setEditorError("");
@@ -103,6 +113,7 @@ export const useDocumentSync = ({
       versionRef.current = nextVersion;
       setVersion(nextVersion);
       setLineOwnership(normalizeLineOwnership(payload.lineOwnership));
+      setCharOwnership(normalizeCharOwnership(payload.charOwnership));
       setEditorError("");
       setIsSaving(false);
       setIsSynced(true);
@@ -126,6 +137,7 @@ export const useDocumentSync = ({
       }
 
       setLineOwnership(normalizeLineOwnership(payload.lineOwnership));
+      setCharOwnership(normalizeCharOwnership(payload.charOwnership));
       setEditorError("");
       setIsSynced(true);
     },
@@ -139,6 +151,7 @@ export const useDocumentSync = ({
       versionRef.current = nextVersion;
       setVersion(nextVersion);
       setLineOwnership(normalizeLineOwnership(payload.lineOwnership));
+      setCharOwnership(normalizeCharOwnership(payload.charOwnership));
       setEditorError("");
       setIsSaving(false);
       setIsSynced(true);
@@ -219,6 +232,7 @@ export const useDocumentSync = ({
     isSynced,
     isSaving,
     editorError,
+    charOwnership,
     lineOwnership,
     requestEditorState,
     handleLocalChange,

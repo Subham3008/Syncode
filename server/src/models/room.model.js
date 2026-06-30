@@ -80,6 +80,7 @@ const roomSchema = new mongoose.Schema(
     participants: { type: [participantSchema], default: [] },
     recentDeltas: { type: [deltaSchema], default: [] },
     lineOwnership: { type: Map, of: lineOwnershipEntrySchema, default: {} },
+    charOwnership: { type: [mongoose.Schema.Types.Mixed], default: [] },
     activityLog: { type: [activityLogSchema], default: [] },
     isLocked: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true, index: true }
