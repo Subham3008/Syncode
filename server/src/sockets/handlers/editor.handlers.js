@@ -50,6 +50,7 @@ const assertSocketCanAccessRoom = ({ socket, roomCode, userId = null }) => {
   }
 
   return {
+    color: storedUser.color,
     roomCode: normalizedRoomCode,
     userId: storedUser.userId,
     username: storedUser.username
@@ -84,7 +85,8 @@ export const registerEditorHandlers = (io, socket) => {
         ...safePayload,
         roomCode: sessionUser.roomCode,
         userId: sessionUser.userId,
-        username: safePayload.username || sessionUser.username
+        username: safePayload.username || sessionUser.username,
+        color: sessionUser.color
       });
 
       socket.emit(SOCKET_EVENTS.EDITOR_SYNC, acceptedDelta);

@@ -14,6 +14,7 @@ import {
 import { resolveDeltaConflict } from "./conflict.service.js";
 import { applyDeltaToDocument, validateDelta } from "./delta.service.js";
 import { scheduleDocumentSave } from "./document.persistence.js";
+import { updateLineOwnership } from "./lineOwnership.service.js";
 
 const roomQueues = new Map();
 
@@ -85,36 +86,6 @@ const runRoomOperation = async (roomCode, operation) => {
   }
 };
 
-const getChangedLineCount = (delta) => {
-  if (typeof delta.text !== "string" || delta.text.length === 0) {
-    return 1;
-  }
-
-  return delta.text.split("\n").length;
-};
-
-const updateLineOwnership = ({ lineOwnership, delta, userId, username }) => {
-  const hasLineOwnershipObject = lineOwnership
-    && typeof lineOwnership === "object"
-    && !Array.isArray(lineOwnership);
-  const nextLineOwnership = hasLineOwnershipObject
-    ? { ...lineOwnership }
-    : {};
-  const startLine = Math.max(1, Number(delta.lineNumber) || 1);
-  const changedLineCount = getChangedLineCount(delta);
-  const timestamp = new Date().toISOString();
-
-  for (let offset = 0; offset < changedLineCount; offset += 1) {
-    nextLineOwnership[String(startLine + offset)] = {
-      userId,
-      username,
-      updatedAt: timestamp
-    };
-  }
-
-  return nextLineOwnership;
-};
-
 const toDeltaRecord = ({ delta, version, userId, username }) => ({
   version,
   userId,
@@ -138,6 +109,7 @@ const toClientDelta = (deltaRecord) => ({
 const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
   const userId = assertString(payload.userId, "userId");
   const username = assertString(payload.username, "username");
+  const color = typeof payload.color === "string" ? payload.color.trim() : "";
   const baseVersion = normalizeVersion(payload.baseVersion, "baseVersion");
   const currentDocument = await getCachedDocument(normalizedRoomCode);
   const currentVersion = await getCachedVersion(normalizedRoomCode);
@@ -165,6 +137,7 @@ const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
   });
   const currentLineOwnership = await getLineOwnership(normalizedRoomCode);
   const lineOwnership = updateLineOwnership({
+    color,
     lineOwnership: currentLineOwnership,
     delta: acceptedDelta,
     userId,

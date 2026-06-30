@@ -43,6 +43,7 @@ const emitRoomState = (io, room) => {
 const attachSocketToRoom = async ({ io, socket, room, sessionUser }) => {
   socket.join(room.roomCode);
   addSocketUser(socket.id, {
+    color: sessionUser.color,
     roomCode: room.roomCode,
     userId: sessionUser.userId,
     username: sessionUser.username

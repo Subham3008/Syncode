@@ -44,8 +44,17 @@ const LineOwnership = ({ lineCount = 1, lineOwnership = {}, scrollTop = 0 }) => 
             <div className="grid h-6 place-items-center" key={lineNumber} title={title}>
               {owner ? (
                 <span
-                  className="grid h-4 min-w-4 place-items-center rounded-sm border border-accent/40 bg-accent/15 px-1 font-mono text-[10px] font-semibold leading-none text-accent"
-                  style={owner.color ? { borderColor: owner.color, color: owner.color } : undefined}
+                  aria-label={title}
+                  className="grid h-4 min-w-4 place-items-center rounded-sm border border-accent/40 bg-accent/15 px-1 font-mono text-[10px] font-semibold leading-none text-accent shadow-sm"
+                  style={
+                    owner.color
+                      ? {
+                          backgroundColor: `${owner.color}22`,
+                          borderColor: owner.color,
+                          color: owner.color
+                        }
+                      : undefined
+                  }
                 >
                   {initials || "*"}
                 </span>
