@@ -16,12 +16,19 @@ const getSafeRedisUrl = () => {
   }
 };
 
-export const redisClient = createClient({
+const createRedisClient = () => createClient({
   url: env.redisUrl
 });
 
+export const redisClient = createRedisClient();
+export const redisSubscriber = redisClient.duplicate();
+
 redisClient.on("error", (error) => {
   logger.error(`Redis error: ${error.message}`);
+});
+
+redisSubscriber.on("error", (error) => {
+  logger.error(`Redis subscriber error: ${error.message}`);
 });
 
 export const connectRedis = async () => {
@@ -37,11 +44,24 @@ export const connectRedis = async () => {
   } catch (error) {
     const message = `Redis connection failed for document sync cache: ${error.message}`;
     logger.error(message);
-    throw new Error(`${message}. Start Redis locally or set REDIS_URL.`);
+    throw new Error(`${message}. Start Redis locally or set REDIS_URL, or set REDIS_HOST, REDIS_PORT, and REDIS_PASSWORD.`);
   }
 };
 
+export const connectRedisSubscriber = async () => {
+  if (redisSubscriber.isOpen) {
+    return redisSubscriber;
+  }
+
+  await redisSubscriber.connect();
+  return redisSubscriber;
+};
+
 export const disconnectRedis = async () => {
+  if (redisSubscriber.isOpen) {
+    await redisSubscriber.quit();
+  }
+
   if (!redisClient.isOpen) {
     return;
   }
