@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { FileCode2, RefreshCw } from "lucide-react";
 import { useDocumentSync } from "../../hooks/useDocumentSync.js";
+import ColoredDocumentOverlay from "./ColoredDocumentOverlay.jsx";
 import EditorStatusBar from "./EditorStatusBar.jsx";
 import LineNumbers from "./LineNumbers.jsx";
 import LineOwnership from "./LineOwnership.jsx";
@@ -38,7 +39,7 @@ const CodeEditor = ({
   userId,
   username
 }) => {
-  const [scrollTop, setScrollTop] = useState(0);
+  const [editorScroll, setEditorScroll] = useState({ left: 0, top: 0 });
   const {
     document,
     editorError,
@@ -67,7 +68,10 @@ const CodeEditor = ({
   };
 
   const handleScroll = (event) => {
-    setScrollTop(event.currentTarget.scrollTop);
+    setEditorScroll({
+      left: event.currentTarget.scrollLeft,
+      top: event.currentTarget.scrollTop
+    });
   };
 
   return (
@@ -113,26 +117,33 @@ const CodeEditor = ({
       </header>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <LineNumbers lineCount={lineCount} scrollTop={scrollTop} />
+        <LineNumbers lineCount={lineCount} scrollTop={editorScroll.top} />
         <LineOwnership
           lineCount={lineCount}
           lineOwnership={lineOwnership}
-          scrollTop={scrollTop}
+          scrollTop={editorScroll.top}
         />
 
         <div className="relative min-w-0 flex-1 bg-[#0b1017]">
+          <ColoredDocumentOverlay
+            document={document}
+            lineOwnership={lineOwnership}
+            scrollLeft={editorScroll.left}
+            scrollTop={editorScroll.top}
+          />
           <textarea
             aria-label="Collaborative code editor"
             autoCapitalize="off"
             autoComplete="off"
             autoCorrect="off"
-            className="h-full w-full resize-none overflow-auto border-0 bg-transparent px-4 py-4 font-mono text-sm leading-6 text-heading caret-accent outline-none selection:bg-accent/30 placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-60"
+            className="relative z-10 h-full w-full resize-none overflow-auto border-0 bg-transparent px-4 py-4 font-mono text-sm leading-6 text-transparent caret-accent outline-none selection:bg-accent/30 placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-60"
             disabled={!canEdit}
             onChange={handleChange}
             onScroll={handleScroll}
             placeholder="Start typing..."
             spellCheck={false}
             value={document}
+            wrap="off"
           />
         </div>
       </div>
