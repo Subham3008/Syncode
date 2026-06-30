@@ -2,16 +2,7 @@ import {
   Activity,
   Circle,
   Crown,
-  LogOut,
-  LockKeyhole,
-  LockOpen,
-  Pencil,
-  RotateCcw,
-  Sparkles,
-  UserMinus,
-  UserPlus,
-  UsersRound,
-  XCircle
+  UsersRound
 } from "lucide-react";
 
 const getTypingLabel = (typingUsers = []) => {
@@ -33,55 +24,46 @@ const getTypingLabel = (typingUsers = []) => {
 const activityStyles = {
   room_created: {
     accent: "#58a6ff",
-    Icon: Sparkles,
     label: "Created",
     surface: "rgba(88, 166, 255, 0.08)"
   },
   user_joined: {
     accent: "#34d399",
-    Icon: UserPlus,
     label: "Joined",
     surface: "rgba(52, 211, 153, 0.08)"
   },
   user_rejoined: {
     accent: "#22d3ee",
-    Icon: RotateCcw,
     label: "Rejoined",
     surface: "rgba(34, 211, 238, 0.08)"
   },
   user_left: {
     accent: "#f59e0b",
-    Icon: LogOut,
     label: "Left",
     surface: "rgba(245, 158, 11, 0.08)"
   },
   room_renamed: {
     accent: "#a78bfa",
-    Icon: Pencil,
     label: "Renamed",
     surface: "rgba(167, 139, 250, 0.08)"
   },
   user_kicked: {
     accent: "#fb7185",
-    Icon: UserMinus,
     label: "Removed",
     surface: "rgba(251, 113, 133, 0.08)"
   },
   room_locked: {
     accent: "#f97316",
-    Icon: LockKeyhole,
     label: "Locked",
     surface: "rgba(249, 115, 22, 0.08)"
   },
   room_unlocked: {
     accent: "#84cc16",
-    Icon: LockOpen,
     label: "Unlocked",
     surface: "rgba(132, 204, 22, 0.08)"
   },
   room_closed: {
     accent: "#f87171",
-    Icon: XCircle,
     label: "Closed",
     surface: "rgba(248, 113, 113, 0.08)"
   }
@@ -89,7 +71,6 @@ const activityStyles = {
 
 const fallbackActivityStyle = {
   accent: "#58a6ff",
-  Icon: Activity,
   label: "Update",
   surface: "rgba(88, 166, 255, 0.08)"
 };
@@ -200,7 +181,6 @@ const PresencePlaceholder = ({
         >
           {orderedActivity.map((activity, index) => {
             const meta = activityStyles[activity.type] ?? fallbackActivityStyle;
-            const Icon = meta.Icon;
             const time = formatActivityTime(activity.timestamp);
 
             return (
@@ -215,38 +195,26 @@ const PresencePlaceholder = ({
                   className="absolute inset-y-0 left-0 w-1"
                   style={{ backgroundColor: meta.accent }}
                 />
-                <div className="flex gap-3 pl-1">
-                  <span
-                    className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded border"
-                    style={{
-                      backgroundColor: meta.surface,
-                      borderColor: `${meta.accent}66`,
-                      color: meta.accent
-                    }}
-                  >
-                    <Icon size={15} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex items-center gap-2">
-                      <span
-                        className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
-                        style={{
-                          backgroundColor: meta.surface,
-                          color: meta.accent
-                        }}
-                      >
-                        {meta.label}
-                      </span>
-                      {time ? (
-                        <time className="font-mono text-[11px] text-muted" dateTime={activity.timestamp}>
-                          {time}
-                        </time>
-                      ) : null}
-                    </div>
-                    <p className="break-words text-sm leading-5 text-body">
-                      {activity.message}
-                    </p>
+                <div className="min-w-0 pl-2">
+                  <div className="mb-1 flex items-center gap-2">
+                    <span
+                      className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
+                      style={{
+                        backgroundColor: meta.surface,
+                        color: meta.accent
+                      }}
+                    >
+                      {meta.label}
+                    </span>
+                    {time ? (
+                      <time className="font-mono text-[11px] text-muted" dateTime={activity.timestamp}>
+                        {time}
+                      </time>
+                    ) : null}
                   </div>
+                  <p className="break-words text-sm leading-5 text-body">
+                    {activity.message}
+                  </p>
                 </div>
               </article>
             );
