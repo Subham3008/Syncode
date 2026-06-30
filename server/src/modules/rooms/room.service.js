@@ -293,3 +293,23 @@ export const markParticipantOffline = async ({ roomCode, userId }) => {
   await room.save();
   return { room, participant };
 };
+
+export const removeParticipantFromRoom = async ({ roomCode, userId }) => {
+  const room = await findRoomOrThrow(roomCode);
+  const participant = room.participants.find((item) => item.userId === userId);
+
+  if (!participant) {
+    return null;
+  }
+
+  room.participants = room.participants.filter((item) => item.userId !== userId);
+  addActivity(room, {
+    type: "user_left",
+    userId,
+    username: participant.username,
+    message: `${participant.username} left the room`
+  });
+
+  await room.save();
+  return { room, participant };
+};

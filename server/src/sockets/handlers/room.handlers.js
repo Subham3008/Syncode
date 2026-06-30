@@ -5,7 +5,8 @@ import {
   joinRoom,
   markParticipantOffline,
   markParticipantOnline,
-  rejoinRoom
+  rejoinRoom,
+  removeParticipantFromRoom
 } from "../../modules/rooms/room.service.js";
 import {
   roomSocketJoinSchema,
@@ -90,6 +91,29 @@ const detachSocketFromRoom = async ({ io, socket, roomCode, userId }) => {
   removeSocketFromRoom(userData.roomCode, socket.id);
 };
 
+const leaveSocketRoom = async ({ io, socket, roomCode, userId }) => {
+  const userData = clearSocketFromAllMaps(socket.id) ?? { roomCode, userId };
+
+  if (userData.roomCode) {
+    socket.leave(userData.roomCode);
+  }
+
+  const result = await removeParticipantFromRoom({
+    roomCode: userData.roomCode,
+    userId: userData.userId
+  });
+
+  if (result?.room) {
+    socket.to(userData.roomCode).emit(SOCKET_EVENTS.ROOM_LEFT, {
+      userId: userData.userId,
+      username: result.participant.username
+    });
+    emitRoomState(io, result.room);
+  }
+
+  removeSocketFromRoom(userData.roomCode, socket.id);
+};
+
 export const registerRoomHandlers = (io, socket) => {
   socket.on(SOCKET_EVENTS.ROOM_JOIN, async (payload = {}) => {
     try {
@@ -115,7 +139,7 @@ export const registerRoomHandlers = (io, socket) => {
     try {
       const storedUser = getUserBySocket(socket.id);
       const data = storedUser ?? roomSocketLeaveSchema.parse(payload);
-      await detachSocketFromRoom({ io, socket, ...data });
+      await leaveSocketRoom({ io, socket, ...data });
     } catch (error) {
       emitRoomError(socket, error);
     }

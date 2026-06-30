@@ -167,10 +167,6 @@ const RoomPage = () => {
       socket.off(SOCKET_EVENTS.PRESENCE_ERROR, handlePresenceError);
 
       if (socket.connected) {
-        socket.emit(SOCKET_EVENTS.ROOM_LEAVE, {
-          roomCode: sessionRoomCode,
-          userId: sessionUserId
-        });
         socket.disconnect();
       }
 
@@ -231,6 +227,10 @@ const RoomPage = () => {
     && room.roomCode
     && sessionUserId
   );
+  const activeSession = {
+    ...session,
+    isHost: session.isHost || room.hostId === session.userId
+  };
 
   return (
     <main className="flex min-h-screen flex-col bg-canvas text-body">
@@ -240,7 +240,7 @@ const RoomPage = () => {
         tone={toast?.tone}
       />
 
-      <RoomHeader onLeave={handleLeave} room={room} session={session} />
+      <RoomHeader onLeave={handleLeave} room={room} session={activeSession} />
 
       <section className="flex min-h-0 flex-1 flex-col md:flex-row">
         {isEditorReady ? (
@@ -273,7 +273,7 @@ const RoomPage = () => {
         onRoomClosed={handleRoomClosed}
         onRoomUpdate={setRoom}
         room={room}
-        session={session}
+        session={activeSession}
       />
     </main>
   );
