@@ -22,6 +22,7 @@ const RoomPage = () => {
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
   const [isSocketRoomReady, setIsSocketRoomReady] = useState(false);
+  const [typingUsers, setTypingUsers] = useState([]);
   const sessionRoomCode = session?.roomCode;
   const sessionUserId = session?.userId;
   const sessionUsername = session?.username;
@@ -98,8 +99,17 @@ const RoomPage = () => {
       setRoom((currentRoom) => currentRoom ? { ...currentRoom, activityLog } : currentRoom);
     };
 
+    const handleTypingUpdated = (payload = {}) => {
+      if (payload.roomCode !== roomCode || !Array.isArray(payload.users)) {
+        return;
+      }
+
+      setTypingUsers(payload.users.filter((user) => user.userId !== sessionUserId));
+    };
+
     const handleRoomClosed = (updatedRoom) => {
       applyRoomPayload(updatedRoom);
+      setTypingUsers([]);
       setToast({ tone: "error", message: "Room was closed by the host" });
       redirectHomeSoon();
     };
@@ -119,6 +129,12 @@ const RoomPage = () => {
       });
     };
 
+    const handlePresenceError = (payload) => {
+      if (import.meta.env.DEV) {
+        console.warn("Presence update failed:", payload?.message);
+      }
+    };
+
     socket.on(SOCKET_EVENTS.CONNECT, rejoinSocketRoom);
     socket.on(SOCKET_EVENTS.ROOM_JOINED, applyRoomPayload);
     socket.on(SOCKET_EVENTS.ROOM_RENAMED, applyRoomPayload);
@@ -127,7 +143,9 @@ const RoomPage = () => {
     socket.on(SOCKET_EVENTS.USER_KICKED, handleUserKicked);
     socket.on(SOCKET_EVENTS.PARTICIPANTS_UPDATED, handleParticipantsUpdated);
     socket.on(SOCKET_EVENTS.ACTIVITY_UPDATED, handleActivityUpdated);
+    socket.on(SOCKET_EVENTS.TYPING_UPDATED, handleTypingUpdated);
     socket.on(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
+    socket.on(SOCKET_EVENTS.PRESENCE_ERROR, handlePresenceError);
 
     if (!socket.connected) {
       socket.connect();
@@ -144,7 +162,9 @@ const RoomPage = () => {
       socket.off(SOCKET_EVENTS.USER_KICKED, handleUserKicked);
       socket.off(SOCKET_EVENTS.PARTICIPANTS_UPDATED, handleParticipantsUpdated);
       socket.off(SOCKET_EVENTS.ACTIVITY_UPDATED, handleActivityUpdated);
+      socket.off(SOCKET_EVENTS.TYPING_UPDATED, handleTypingUpdated);
       socket.off(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
+      socket.off(SOCKET_EVENTS.PRESENCE_ERROR, handlePresenceError);
 
       if (socket.connected) {
         socket.emit(SOCKET_EVENTS.ROOM_LEAVE, {
@@ -155,6 +175,7 @@ const RoomPage = () => {
       }
 
       setIsSocketRoomReady(false);
+      setTypingUsers([]);
     };
   }, [clearSession, navigate, roomCode, sessionRoomCode, sessionUserId, status]);
 
@@ -243,6 +264,7 @@ const RoomPage = () => {
         <PresencePlaceholder
           activityLog={room.activityLog}
           participants={room.participants}
+          typingUsers={typingUsers}
         />
       </section>
 

@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FileCode2, RefreshCw } from "lucide-react";
+import { SOCKET_EVENTS } from "../../constants/socketEvents.js";
 import { useDocumentSync } from "../../hooks/useDocumentSync.js";
+import { socket } from "../../socket/socket.js";
 import ColoredDocumentOverlay from "./ColoredDocumentOverlay.jsx";
 import EditorStatusBar from "./EditorStatusBar.jsx";
 import LineNumbers from "./LineNumbers.jsx";
@@ -43,6 +45,8 @@ const getOwnershipSummary = (lineOwnership, charOwnership) => {
   return Array.from(owners.values()).slice(0, 4);
 };
 
+const TYPING_STOP_DELAY_MS = 1200;
+
 const CodeEditor = ({
   initialDocument = "",
   initialVersion = 0,
@@ -51,6 +55,8 @@ const CodeEditor = ({
   username
 }) => {
   const [editorScroll, setEditorScroll] = useState({ left: 0, top: 0 });
+  const typingStopTimerRef = useRef(null);
+  const isTypingRef = useRef(false);
   const {
     charOwnership,
     document,
@@ -75,7 +81,40 @@ const CodeEditor = ({
   );
   const canEdit = Boolean(roomCode && userId);
 
+  const emitTypingStop = () => {
+    if (!roomCode || !isTypingRef.current) {
+      return;
+    }
+
+    socket.emit(SOCKET_EVENTS.TYPING_STOP, { roomCode });
+    isTypingRef.current = false;
+  };
+
+  const scheduleTypingStop = () => {
+    if (typingStopTimerRef.current) {
+      window.clearTimeout(typingStopTimerRef.current);
+    }
+
+    typingStopTimerRef.current = window.setTimeout(() => {
+      emitTypingStop();
+    }, TYPING_STOP_DELAY_MS);
+  };
+
+  const emitTypingStart = () => {
+    if (!canEdit || !roomCode) {
+      return;
+    }
+
+    if (!isTypingRef.current) {
+      socket.emit(SOCKET_EVENTS.TYPING_START, { roomCode });
+      isTypingRef.current = true;
+    }
+
+    scheduleTypingStop();
+  };
+
   const handleChange = (event) => {
+    emitTypingStart();
     handleLocalChange(event.target.value, event.target.selectionStart);
   };
 
@@ -85,6 +124,16 @@ const CodeEditor = ({
       top: event.currentTarget.scrollTop
     });
   };
+
+  useEffect(() => {
+    return () => {
+      if (typingStopTimerRef.current) {
+        window.clearTimeout(typingStopTimerRef.current);
+      }
+
+      emitTypingStop();
+    };
+  }, [roomCode]);
 
   return (
     <section className="flex min-h-[420px] flex-1 flex-col overflow-hidden bg-canvas">
@@ -152,6 +201,7 @@ const CodeEditor = ({
             className="relative z-10 h-full w-full resize-none overflow-auto border-0 bg-transparent px-4 py-4 font-mono text-sm leading-6 text-transparent caret-accent outline-none selection:bg-accent/30 placeholder:text-muted disabled:cursor-not-allowed disabled:opacity-60"
             disabled={!canEdit}
             onChange={handleChange}
+            onBlur={emitTypingStop}
             onScroll={handleScroll}
             placeholder="Start typing..."
             spellCheck={false}

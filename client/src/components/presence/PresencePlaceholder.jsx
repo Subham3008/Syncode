@@ -1,6 +1,28 @@
 import { Activity, Circle } from "lucide-react";
 
-const PresencePlaceholder = ({ participants = [], activityLog = [] }) => {
+const getTypingLabel = (typingUsers = []) => {
+  if (typingUsers.length === 0) {
+    return "";
+  }
+
+  if (typingUsers.length === 1) {
+    return `${typingUsers[0].username} is typing`;
+  }
+
+  if (typingUsers.length === 2) {
+    return `${typingUsers[0].username} and ${typingUsers[1].username} are typing`;
+  }
+
+  return `${typingUsers[0].username} and ${typingUsers.length - 1} others are typing`;
+};
+
+const PresencePlaceholder = ({
+  participants = [],
+  activityLog = [],
+  typingUsers = []
+}) => {
+  const typingLabel = getTypingLabel(typingUsers);
+
   return (
     <aside className="flex w-full flex-col border-border bg-surface md:w-[280px] md:border-l">
       <section className="border-b border-border p-4">
@@ -10,9 +32,18 @@ const PresencePlaceholder = ({ participants = [], activityLog = [] }) => {
             Presence
           </h2>
         </div>
-        <p className="mb-4 text-sm leading-6 text-muted">
-          Realtime presence panel will be implemented by Akhil.
-        </p>
+        {typingLabel ? (
+          <div className="mb-4 rounded border border-accent/30 bg-accent/10 px-3 py-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-heading">
+              <span className="flex h-4 items-center gap-1" aria-hidden="true">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-accent [animation-delay:-0.2s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-accent [animation-delay:-0.1s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-accent" />
+              </span>
+              <span className="truncate">{typingLabel}</span>
+            </div>
+          </div>
+        ) : null}
         <div className="space-y-2">
           {participants.map((participant) => (
             <div

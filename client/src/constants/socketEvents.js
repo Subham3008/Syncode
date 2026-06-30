@@ -22,6 +22,11 @@ export const SOCKET_EVENTS = {
   EDITOR_SYNC: "editor:sync",
   EDITOR_ERROR: "editor:error",
 
+  TYPING_START: "typing:start",
+  TYPING_STOP: "typing:stop",
+  TYPING_UPDATED: "typing:updated",
+  PRESENCE_ERROR: "presence:error",
+
   HOST_RENAME_ROOM: "host:rename-room",
   HOST_KICK_USER: "host:kick-user",
   HOST_LOCK_ROOM: "host:lock-room",
