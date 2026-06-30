@@ -89,7 +89,6 @@ export const registerEditorHandlers = (io, socket) => {
         color: sessionUser.color
       });
 
-      socket.emit(SOCKET_EVENTS.EDITOR_SYNC, acceptedDelta);
       socket.to(sessionUser.roomCode).emit(SOCKET_EVENTS.EDITOR_DELTA_APPLIED, acceptedDelta);
 
       if (typeof acknowledge === "function") {
