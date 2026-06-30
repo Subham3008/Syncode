@@ -209,9 +209,6 @@ const HomePage = () => {
         <p className="hidden truncate font-mono text-xs text-muted md:block">
           shared-workspace / main.js
         </p>
-        <span className="rounded border border-border bg-[#0d1117] px-2 py-1 font-mono text-[11px] text-muted">
-          No login
-        </span>
       </header>
 
       <section className="grid min-h-[calc(100vh-48px)] grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_420px]">

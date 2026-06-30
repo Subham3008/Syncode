@@ -12,5 +12,13 @@ export const PARTICIPANT_COLORS = [
   "#a78bfa",
   "#fb7185",
   "#2dd4bf",
-  "#c084fc"
+  "#c084fc",
+  "#60a5fa",
+  "#84cc16",
+  "#f97316",
+  "#22d3ee",
+  "#e879f9",
+  "#f87171",
+  "#14b8a6",
+  "#eab308"
 ];

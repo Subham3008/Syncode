@@ -15,21 +15,128 @@ const createUserId = () => `user_${nanoid(12)}`;
 
 const now = () => new Date();
 
+const normalizeColor = (color) => (typeof color === "string" ? color.trim().toLowerCase() : "");
+
+const hashString = (value = "") => {
+  const source = String(value || "participant");
+  let hash = 2166136261;
+
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+};
+
+const hslToHex = (hue, saturation, lightness) => {
+  const s = saturation / 100;
+  const l = lightness / 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+
+  if (hue < 60) {
+    r = c;
+    g = x;
+  } else if (hue < 120) {
+    r = x;
+    g = c;
+  } else if (hue < 180) {
+    g = c;
+    b = x;
+  } else if (hue < 240) {
+    g = x;
+    b = c;
+  } else if (hue < 300) {
+    r = x;
+    b = c;
+  } else {
+    r = c;
+    b = x;
+  }
+
+  const toHex = (channel) =>
+    Math.round((channel + m) * 255)
+      .toString(16)
+      .padStart(2, "0");
+
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
+const createGeneratedColor = ({ userId = "", username = "" } = {}, attempt = 0) => {
+  const hash = hashString(`${userId}:${username}:${attempt}`);
+  const hue = (hash + Math.round(attempt * 137.508)) % 360;
+  const saturation = 68 + (hash % 12);
+  const lightness = 52 + ((hash >>> 8) % 8);
+
+  return hslToHex(hue, saturation, lightness);
+};
+
+const pickColorFromUsed = (usedColors, participant = {}) => {
+  const paletteColor = PARTICIPANT_COLORS.find(
+    (color) => !usedColors.has(normalizeColor(color))
+  );
+
+  if (paletteColor) {
+    return paletteColor;
+  }
+
+  for (let attempt = 0; attempt < 64; attempt += 1) {
+    const generatedColor = createGeneratedColor(participant, attempt);
+
+    if (!usedColors.has(normalizeColor(generatedColor))) {
+      return generatedColor;
+    }
+  }
+
+  return hslToHex((usedColors.size * 137.508) % 360, 72, 56);
+};
+
+const pickParticipantColor = (room, participant = {}) => {
+  const usedColors = new Set(
+    (room?.participants ?? [])
+      .map((item) => normalizeColor(item.color))
+      .filter(Boolean)
+  );
+
+  return pickColorFromUsed(usedColors, participant);
+};
+
+const ensureUniqueParticipantColors = (room) => {
+  const usedColors = new Set();
+  let changed = false;
+
+  for (const participant of room?.participants ?? []) {
+    const normalizedColor = normalizeColor(participant.color);
+
+    if (!normalizedColor || usedColors.has(normalizedColor)) {
+      participant.color = pickColorFromUsed(usedColors, {
+        userId: participant.userId,
+        username: participant.username
+      });
+      changed = true;
+    }
+
+    usedColors.add(normalizeColor(participant.color));
+  }
+
+  return changed;
+};
+
 const createParticipant = ({ userId, username, room, isHost = false, socketId = null }) => ({
   userId,
   username,
   socketId,
-  color: pickParticipantColor(room),
+  color: pickParticipantColor(room, { userId, username }),
   isOnline: Boolean(socketId),
   isHost,
   joinedAt: now(),
   lastSeen: now()
 });
-
-const pickParticipantColor = (room) => {
-  const usedColors = new Set(room?.participants?.map((participant) => participant.color) ?? []);
-  return PARTICIPANT_COLORS.find((color) => !usedColors.has(color)) ?? PARTICIPANT_COLORS[0];
-};
 
 const addActivity = (room, activity) => {
   room.activityLog.push({
@@ -117,6 +224,7 @@ export const joinRoom = async ({ roomCode, username }) => {
   });
 
   room.participants.push(participant);
+  ensureUniqueParticipantColors(room);
   addActivity(room, {
     type: "user_joined",
     userId: participant.userId,
@@ -161,7 +269,6 @@ export const rejoinRoom = async ({ roomCode, userId }) => {
       isHost: true
     });
     room.participants.push(participant);
-    await room.save();
   }
 
   participant.isOnline = true;
@@ -171,11 +278,20 @@ export const rejoinRoom = async ({ roomCode, userId }) => {
     participant.isHost = true;
   }
 
+  ensureUniqueParticipantColors(room);
+  await room.save();
+
   return { room, sessionUser: participant };
 };
 
 export const getRoomByCode = async (roomCode) => {
-  return findRoomOrThrow(roomCode);
+  const room = await findRoomOrThrow(roomCode);
+
+  if (ensureUniqueParticipantColors(room)) {
+    await room.save();
+  }
+
+  return room;
 };
 
 export const renameRoom = async ({ roomCode, userId, roomName }) => {
@@ -271,6 +387,7 @@ export const markParticipantOnline = async ({ roomCode, userId, socketId }) => {
   participant.isOnline = true;
   participant.lastSeen = now();
 
+  ensureUniqueParticipantColors(room);
   await room.save();
   return { room, participant };
 };
