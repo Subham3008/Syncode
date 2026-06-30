@@ -44,56 +44,88 @@ const broadcastRoomState = (io, room, eventName) => {
   io.to(room.roomCode).emit(SOCKET_EVENTS.ACTIVITY_UPDATED, roomDTO.activityLog);
 };
 
+const acknowledgeSuccess = (acknowledge, room) => {
+  if (typeof acknowledge !== "function") {
+    return;
+  }
+
+  acknowledge({
+    success: true,
+    data: toRoomDTO(room)
+  });
+};
+
+const acknowledgeError = (acknowledge, error) => {
+  if (typeof acknowledge !== "function") {
+    return;
+  }
+
+  acknowledge({
+    success: false,
+    message: getErrorMessage(error)
+  });
+};
+
 export const registerHostHandlers = (io, socket) => {
-  socket.on(SOCKET_EVENTS.HOST_RENAME_ROOM, async (payload = {}) => {
+  socket.on(SOCKET_EVENTS.HOST_RENAME_ROOM, async (payload = {}, acknowledge) => {
     try {
       const data = hostRenameRoomSocketSchema.parse(payload);
       const room = await renameRoom(data);
       broadcastRoomState(io, room, SOCKET_EVENTS.ROOM_RENAMED);
+      acknowledgeSuccess(acknowledge, room);
     } catch (error) {
       emitHostError(socket, error);
+      acknowledgeError(acknowledge, error);
     }
   });
 
-  socket.on(SOCKET_EVENTS.HOST_KICK_USER, async (payload = {}) => {
+  socket.on(SOCKET_EVENTS.HOST_KICK_USER, async (payload = {}, acknowledge) => {
     try {
       const data = hostKickUserSocketSchema.parse(payload);
       const { room, kickedParticipant } = await kickParticipant(data);
       const targetSocketId = getSocketIdByUser(kickedParticipant.userId);
 
+      io.to(room.roomCode).emit(SOCKET_EVENTS.USER_KICKED, {
+        roomCode: room.roomCode,
+        targetUserId: kickedParticipant.userId,
+        message: "You were removed from the room by the host"
+      });
+
       if (targetSocketId) {
-        io.to(targetSocketId).emit(SOCKET_EVENTS.USER_KICKED, {
-          roomCode: room.roomCode,
-          message: "You were removed from the room by the host"
-        });
         io.sockets.sockets.get(targetSocketId)?.leave(room.roomCode);
         removeSocketFromRoom(room.roomCode, targetSocketId);
         removeSocketUser(targetSocketId);
       }
 
       broadcastRoomState(io, room);
+      acknowledgeSuccess(acknowledge, room);
     } catch (error) {
       emitHostError(socket, error);
+      acknowledgeError(acknowledge, error);
     }
   });
 
-  socket.on(SOCKET_EVENTS.HOST_LOCK_ROOM, async (payload = {}) => {
+  socket.on(SOCKET_EVENTS.HOST_LOCK_ROOM, async (payload = {}, acknowledge) => {
     try {
       const data = hostLockRoomSocketSchema.parse(payload);
       const room = await setRoomLock(data);
       broadcastRoomState(io, room, SOCKET_EVENTS.ROOM_LOCKED);
+      acknowledgeSuccess(acknowledge, room);
     } catch (error) {
       emitHostError(socket, error);
+      acknowledgeError(acknowledge, error);
     }
   });
 
-  socket.on(SOCKET_EVENTS.HOST_CLOSE_ROOM, async (payload = {}) => {
+  socket.on(SOCKET_EVENTS.HOST_CLOSE_ROOM, async (payload = {}, acknowledge) => {
     try {
       const data = hostCloseRoomSocketSchema.parse(payload);
       const room = await closeRoom(data);
       broadcastRoomState(io, room, SOCKET_EVENTS.ROOM_CLOSED);
+      acknowledgeSuccess(acknowledge, room);
     } catch (error) {
       emitHostError(socket, error);
+      acknowledgeError(acknowledge, error);
     }
   });
 };

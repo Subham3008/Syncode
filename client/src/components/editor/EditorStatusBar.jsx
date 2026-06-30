@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { AlertTriangle, CheckCircle2, Cloud, Loader2 } from "lucide-react";
 
 const getStatus = ({ isSaving, isSynced, editorError }) => {
@@ -64,4 +65,4 @@ const EditorStatusBar = ({
   );
 };
 
-export default EditorStatusBar;
+export default memo(EditorStatusBar);

@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 const normalizeOwnership = (lineOwnership) => {
   if (!lineOwnership || typeof lineOwnership !== "object" || Array.isArray(lineOwnership)) {
     return {};
@@ -81,4 +83,4 @@ const LineOwnership = ({ lineCount = 1, lineOwnership = {}, scrollTop = 0 }) => 
   );
 };
 
-export default LineOwnership;
+export default memo(LineOwnership);

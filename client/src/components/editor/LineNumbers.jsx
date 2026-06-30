@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 const getLineNumbers = (lineCount) =>
   Array.from({ length: Math.max(lineCount, 1) }, (_, index) => index + 1);
 
@@ -21,4 +23,4 @@ const LineNumbers = ({ lineCount = 1, scrollTop = 0 }) => {
   );
 };
 
-export default LineNumbers;
+export default memo(LineNumbers);

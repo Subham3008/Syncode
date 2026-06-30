@@ -51,6 +51,7 @@ const CodeEditor = ({
   initialDocument = "",
   initialVersion = 0,
   roomCode,
+  userColor = "",
   userId,
   username
 }) => {
@@ -69,6 +70,7 @@ const CodeEditor = ({
     version
   } = useDocumentSync({
     roomCode,
+    userColor,
     userId,
     username,
     initialDocument,

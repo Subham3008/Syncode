@@ -4,12 +4,27 @@ import Button from "../common/Button.jsx";
 import Badge from "../common/Badge.jsx";
 import Input from "../common/Input.jsx";
 import Modal from "../common/Modal.jsx";
-import {
-  closeRoom,
-  kickUser,
-  lockRoom,
-  renameRoom
-} from "../../services/room.service.js";
+import { SOCKET_EVENTS } from "../../constants/socketEvents.js";
+import { socket } from "../../socket/socket.js";
+
+const HOST_ACTION_TIMEOUT_MS = 8000;
+
+const emitHostAction = (eventName, payload) =>
+  new Promise((resolve, reject) => {
+    socket.timeout(HOST_ACTION_TIMEOUT_MS).emit(eventName, payload, (error, response = {}) => {
+      if (error) {
+        reject(new Error("Realtime host action timed out"));
+        return;
+      }
+
+      if (!response.success) {
+        reject(new Error(response.message || "Host action failed"));
+        return;
+      }
+
+      resolve({ data: response.data });
+    });
+  });
 
 const HostControls = ({ room, session, onRoomUpdate, onRoomClosed, onNotify }) => {
   const [activeModal, setActiveModal] = useState(null);
@@ -54,7 +69,8 @@ const HostControls = ({ room, session, onRoomUpdate, onRoomClosed, onNotify }) =
     runHostAction(
       "rename",
       () =>
-        renameRoom(room.roomCode, {
+        emitHostAction(SOCKET_EVENTS.HOST_RENAME_ROOM, {
+          roomCode: room.roomCode,
           userId: session.userId,
           roomName
         }),
@@ -65,7 +81,8 @@ const HostControls = ({ room, session, onRoomUpdate, onRoomClosed, onNotify }) =
     runHostAction(
       "lock",
       () =>
-        lockRoom(room.roomCode, {
+        emitHostAction(SOCKET_EVENTS.HOST_LOCK_ROOM, {
+          roomCode: room.roomCode,
           userId: session.userId,
           isLocked: !room.isLocked
         }),
@@ -76,7 +93,8 @@ const HostControls = ({ room, session, onRoomUpdate, onRoomClosed, onNotify }) =
     runHostAction(
       "kick",
       () =>
-        kickUser(room.roomCode, {
+        emitHostAction(SOCKET_EVENTS.HOST_KICK_USER, {
+          roomCode: room.roomCode,
           hostId: session.userId,
           targetUserId
         }),
@@ -87,7 +105,8 @@ const HostControls = ({ room, session, onRoomUpdate, onRoomClosed, onNotify }) =
     const updatedRoom = await runHostAction(
       "close",
       () =>
-        closeRoom(room.roomCode, {
+        emitHostAction(SOCKET_EVENTS.HOST_CLOSE_ROOM, {
+          roomCode: room.roomCode,
           userId: session.userId
         }),
       "Room closed"

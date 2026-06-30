@@ -36,8 +36,19 @@ const normalizeCharOwnership = (charOwnership) => {
   return charOwnership;
 };
 
+const EDITOR_ACK_TIMEOUT_MS = 8000;
+
+const createClientMutationId = () => {
+  if (window.crypto?.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+
+  return `mutation_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+};
+
 export const useDocumentSync = ({
   roomCode,
+  userColor = "",
   userId,
   username,
   initialDocument = "",
@@ -52,6 +63,10 @@ export const useDocumentSync = ({
   const [lineOwnership, setLineOwnership] = useState({});
   const [charOwnership, setCharOwnership] = useState([]);
   const versionRef = useRef(version);
+  const pendingMutationIdsRef = useRef(new Set());
+  const queuedDeltasRef = useRef([]);
+  const inFlightMutationIdRef = useRef("");
+  const flushQueuedDeltaRef = useRef(null);
   const connectionRef = useRef({
     roomCode: normalizedRoomCode,
     userId,
@@ -78,13 +93,78 @@ export const useDocumentSync = ({
     setIsSynced(true);
     setIsSaving(false);
     setEditorError("");
+    pendingMutationIdsRef.current.clear();
+    queuedDeltasRef.current = [];
+    inFlightMutationIdRef.current = "";
   }, [initialDocument, initialVersion, normalizedRoomCode]);
+
+  const updateSavingState = useCallback(() => {
+    setIsSaving(
+      pendingMutationIdsRef.current.size > 0
+      || queuedDeltasRef.current.length > 0
+      || Boolean(inFlightMutationIdRef.current)
+    );
+  }, []);
+
+  const removePendingMutation = useCallback((clientMutationId = "") => {
+    if (clientMutationId) {
+      pendingMutationIdsRef.current.delete(clientMutationId);
+    } else {
+      pendingMutationIdsRef.current.clear();
+    }
+
+    updateSavingState();
+  }, [updateSavingState]);
 
   const handleDeltaError = useCallback((message) => {
     setEditorError(message || "Editor sync failed");
+    pendingMutationIdsRef.current.clear();
+    queuedDeltasRef.current = [];
+    inFlightMutationIdRef.current = "";
     setIsSaving(false);
     setIsSynced(false);
   }, []);
+
+  const applyOptimisticOwnership = useCallback((delta) => {
+    if (!delta || !userId || !username) {
+      return;
+    }
+
+    const owner = {
+      color: userColor,
+      userId,
+      username
+    };
+    const insertedLength = typeof delta.text === "string" ? delta.text.length : 0;
+    const startPosition = Number.isInteger(delta.position) ? delta.position : 0;
+    const removedLength = Number.isInteger(delta.length) ? delta.length : 0;
+    const lineNumber = Number.isInteger(delta.lineNumber) && delta.lineNumber > 0
+      ? delta.lineNumber
+      : 1;
+
+    setLineOwnership((currentOwnership) => ({
+      ...normalizeLineOwnership(currentOwnership),
+      [String(lineNumber)]: owner
+    }));
+
+    setCharOwnership((currentOwnership) => {
+      const nextOwnership = normalizeCharOwnership(currentOwnership).slice();
+      const insertedOwnership = Array.from({ length: insertedLength }, () => owner);
+
+      if (delta.type === "insert") {
+        nextOwnership.splice(startPosition, 0, ...insertedOwnership);
+        return nextOwnership;
+      }
+
+      if (delta.type === "delete") {
+        nextOwnership.splice(startPosition, removedLength);
+        return nextOwnership;
+      }
+
+      nextOwnership.splice(startPosition, removedLength, ...insertedOwnership);
+      return nextOwnership;
+    });
+  }, [userColor, userId, username]);
 
   const {
     replaceDocument,
@@ -115,10 +195,10 @@ export const useDocumentSync = ({
       setLineOwnership(normalizeLineOwnership(payload.lineOwnership));
       setCharOwnership(normalizeCharOwnership(payload.charOwnership));
       setEditorError("");
-      setIsSaving(false);
+      removePendingMutation();
       setIsSynced(true);
     },
-    [replaceDocument]
+    [removePendingMutation, replaceDocument]
   );
 
   const handleRemoteDelta = useCallback(
@@ -153,15 +233,78 @@ export const useDocumentSync = ({
       setLineOwnership(normalizeLineOwnership(payload.lineOwnership));
       setCharOwnership(normalizeCharOwnership(payload.charOwnership));
       setEditorError("");
-      setIsSaving(false);
+      removePendingMutation(payload.clientMutationId);
       setIsSynced(true);
 
       if (payload.conflictResolved) {
         requestEditorState();
       }
     },
-    [requestEditorState]
+    [removePendingMutation, requestEditorState]
   );
+
+  const flushQueuedDelta = useCallback(() => {
+    const nextQueuedDelta = queuedDeltasRef.current.shift();
+
+    if (!nextQueuedDelta) {
+      updateSavingState();
+      return;
+    }
+
+    if (inFlightMutationIdRef.current) {
+      queuedDeltasRef.current.unshift(nextQueuedDelta);
+      updateSavingState();
+      return;
+    }
+
+    if (!socket.connected) {
+      queuedDeltasRef.current.unshift(nextQueuedDelta);
+      updateSavingState();
+      return;
+    }
+
+    const payload = {
+      ...nextQueuedDelta,
+      baseVersion: versionRef.current
+    };
+
+    inFlightMutationIdRef.current = payload.clientMutationId;
+    pendingMutationIdsRef.current.add(payload.clientMutationId);
+    updateSavingState();
+
+    socket.timeout(EDITOR_ACK_TIMEOUT_MS).emit(
+      SOCKET_EVENTS.EDITOR_DELTA,
+      payload,
+      (ackError, response = {}) => {
+        inFlightMutationIdRef.current = "";
+
+        if (ackError) {
+          pendingMutationIdsRef.current.delete(payload.clientMutationId);
+          queuedDeltasRef.current = [];
+          updateSavingState();
+          setIsSynced(false);
+          setEditorError("Editor sync timed out. Refreshed the latest room state.");
+          requestEditorState();
+          return;
+        }
+
+        if (!response.success) {
+          pendingMutationIdsRef.current.delete(payload.clientMutationId);
+          queuedDeltasRef.current = [];
+          handleDeltaError(response.message || "Editor sync failed");
+          requestEditorState();
+          return;
+        }
+
+        handleEditorSync(response.data);
+        flushQueuedDeltaRef.current?.();
+      }
+    );
+  }, [handleDeltaError, handleEditorSync, requestEditorState, updateSavingState]);
+
+  useEffect(() => {
+    flushQueuedDeltaRef.current = flushQueuedDelta;
+  }, [flushQueuedDelta]);
 
   const handleLocalChange = useCallback(
     (nextText, cursorPosition = null) => {
@@ -179,22 +322,25 @@ export const useDocumentSync = ({
         return null;
       }
 
+      applyOptimisticOwnership(change.delta);
+
       const payload = {
+        clientMutationId: createClientMutationId(),
         roomCode: currentRoomCode,
         userId: currentUserId,
         username: currentUsername,
-        baseVersion: versionRef.current,
         delta: change.delta
       };
 
+      queuedDeltasRef.current.push(payload);
       setIsSaving(true);
       setIsSynced(false);
       setEditorError("");
-      socket.emit(SOCKET_EVENTS.EDITOR_DELTA, payload);
+      flushQueuedDeltaRef.current?.();
 
       return payload;
     },
-    [applyLocalChange, handleDeltaError]
+    [applyLocalChange, applyOptimisticOwnership, handleDeltaError]
   );
 
   useEffect(() => {
@@ -204,19 +350,35 @@ export const useDocumentSync = ({
       handleDeltaError(payload.message || "Editor sync failed");
       requestEditorState();
     };
+    const handleSocketDisconnect = () => {
+      if (
+        pendingMutationIdsRef.current.size > 0
+        || queuedDeltasRef.current.length > 0
+        || inFlightMutationIdRef.current
+      ) {
+        handleDeltaError("Editor connection dropped before changes were confirmed");
+      }
+    };
+    const handleSocketConnect = () => {
+      flushQueuedDeltaRef.current?.();
+    };
 
+    socket.on(SOCKET_EVENTS.CONNECT, handleSocketConnect);
     socket.on(SOCKET_EVENTS.EDITOR_STATE, handleEditorState);
     socket.on(SOCKET_EVENTS.EDITOR_SYNC, handleEditorSync);
     socket.on(SOCKET_EVENTS.EDITOR_DELTA_APPLIED, handleEditorDeltaApplied);
     socket.on(SOCKET_EVENTS.EDITOR_ERROR, handleEditorError);
+    socket.on(SOCKET_EVENTS.DISCONNECT, handleSocketDisconnect);
 
     requestEditorState();
 
     return () => {
+      socket.off(SOCKET_EVENTS.CONNECT, handleSocketConnect);
       socket.off(SOCKET_EVENTS.EDITOR_STATE, handleEditorState);
       socket.off(SOCKET_EVENTS.EDITOR_SYNC, handleEditorSync);
       socket.off(SOCKET_EVENTS.EDITOR_DELTA_APPLIED, handleEditorDeltaApplied);
       socket.off(SOCKET_EVENTS.EDITOR_ERROR, handleEditorError);
+      socket.off(SOCKET_EVENTS.DISCONNECT, handleSocketDisconnect);
     };
   }, [
     applyEditorState,

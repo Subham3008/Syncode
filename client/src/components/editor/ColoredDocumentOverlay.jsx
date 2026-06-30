@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 const normalizeOwnership = (lineOwnership) => {
   if (!lineOwnership || typeof lineOwnership !== "object" || Array.isArray(lineOwnership)) {
     return {};
@@ -114,4 +116,4 @@ const ColoredDocumentOverlay = ({
   );
 };
 
-export default ColoredDocumentOverlay;
+export default memo(ColoredDocumentOverlay);

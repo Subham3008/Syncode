@@ -35,5 +35,6 @@ export const toRoomSessionDTO = (room, sessionUser) => ({
   ...toRoomDTO(room),
   userId: sessionUser.userId,
   username: sessionUser.username,
+  color: sessionUser.color,
   isHost: room.hostId === sessionUser.userId
 });

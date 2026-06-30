@@ -73,7 +73,7 @@ export const registerEditorHandlers = (io, socket) => {
     }
   });
 
-  socket.on(SOCKET_EVENTS.EDITOR_DELTA, async (payload = {}) => {
+  socket.on(SOCKET_EVENTS.EDITOR_DELTA, async (payload = {}, acknowledge) => {
     try {
       const safePayload = normalizePayload(payload);
       const sessionUser = assertSocketCanAccessRoom({
@@ -91,8 +91,23 @@ export const registerEditorHandlers = (io, socket) => {
 
       socket.emit(SOCKET_EVENTS.EDITOR_SYNC, acceptedDelta);
       socket.to(sessionUser.roomCode).emit(SOCKET_EVENTS.EDITOR_DELTA_APPLIED, acceptedDelta);
+
+      if (typeof acknowledge === "function") {
+        acknowledge({
+          success: true,
+          data: acceptedDelta
+        });
+      }
     } catch (error) {
       emitEditorError(socket, error);
+
+      if (typeof acknowledge === "function") {
+        acknowledge({
+          success: false,
+          message: error.message || "Editor sync failed",
+          statusCode: error.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR
+        });
+      }
     }
   });
 };

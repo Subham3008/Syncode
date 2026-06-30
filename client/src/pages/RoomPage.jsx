@@ -88,11 +88,26 @@ const RoomPage = () => {
           ...nextRoom
         }));
         setIsSocketRoomReady(true);
+
+        if (nextRoom.isActive === false) {
+          setTypingUsers([]);
+          setToast({ tone: "error", message: "Room was closed by the host" });
+          redirectHomeSoon();
+        }
       }
     };
 
     const handleParticipantsUpdated = (participants) => {
       setRoom((currentRoom) => currentRoom ? { ...currentRoom, participants } : currentRoom);
+
+      if (
+        Array.isArray(participants)
+        && sessionUserId
+        && !participants.some((participant) => participant.userId === sessionUserId)
+      ) {
+        setToast({ tone: "error", message: "You were removed from the room" });
+        redirectHomeSoon();
+      }
     };
 
     const handleActivityUpdated = (activityLog) => {
@@ -109,12 +124,13 @@ const RoomPage = () => {
 
     const handleRoomClosed = (updatedRoom) => {
       applyRoomPayload(updatedRoom);
-      setTypingUsers([]);
-      setToast({ tone: "error", message: "Room was closed by the host" });
-      redirectHomeSoon();
     };
 
     const handleUserKicked = (payload) => {
+      if (payload?.targetUserId && payload.targetUserId !== sessionUserId) {
+        return;
+      }
+
       setToast({
         tone: "error",
         message: payload?.message || "You were removed from the room"
@@ -123,10 +139,18 @@ const RoomPage = () => {
     };
 
     const handleRoomError = (payload) => {
+      const message = payload?.message || "Realtime room connection failed";
+
       setToast({
         tone: "error",
-        message: payload?.message || "Realtime room connection failed"
+        message
       });
+
+      if (/participant not found|room not found|room is closed/i.test(message)) {
+        clearSession();
+        setIsSocketRoomReady(false);
+        navigate(ROUTES.HOME);
+      }
     };
 
     const handlePresenceError = (payload) => {
@@ -252,6 +276,10 @@ const RoomPage = () => {
     ...session,
     isHost: session.isHost || room.hostId === session.userId
   };
+  const activeParticipant = room.participants?.find(
+    (participant) => participant.userId === sessionUserId
+  );
+  const sessionColor = session.color || activeParticipant?.color || "";
 
   return (
     <main className="flex min-h-screen flex-col bg-canvas text-body">
@@ -269,6 +297,7 @@ const RoomPage = () => {
             initialDocument={room.document}
             initialVersion={room.documentVersion}
             roomCode={room.roomCode}
+            userColor={sessionColor}
             userId={sessionUserId}
             username={sessionUsername}
           />

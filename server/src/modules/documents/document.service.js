@@ -168,6 +168,9 @@ const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
   scheduleDocumentSave(normalizedRoomCode);
 
   return {
+    clientMutationId: typeof payload.clientMutationId === "string"
+      ? payload.clientMutationId
+      : "",
     roomCode: normalizedRoomCode,
     userId,
     username,
