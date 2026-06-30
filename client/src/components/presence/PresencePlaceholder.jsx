@@ -57,7 +57,14 @@ const PresencePlaceholder = ({
                 >
                   {participant.username?.charAt(0)?.toUpperCase()}
                 </span>
-                <span className="truncate text-sm text-heading">{participant.username}</span>
+                <div className="min-w-0">
+                  <span className="block truncate text-sm text-heading">{participant.username}</span>
+                  {participant.isTyping ? (
+                    <span className="block truncate text-[11px] font-medium text-accent">
+                      Editing...
+                    </span>
+                  ) : null}
+                </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Circle

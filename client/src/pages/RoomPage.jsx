@@ -13,8 +13,12 @@ import { rejoinRoom } from "../services/room.service.js";
 import { socket } from "../socket/socket.js";
 import { useRoomSession } from "../hooks/useRoomSession.js";
 
+const normalizeRoomCode = (code) =>
+  typeof code === "string" ? code.trim().toUpperCase() : "";
+
 const RoomPage = () => {
   const { roomCode } = useParams();
+  const normalizedRouteRoomCode = normalizeRoomCode(roomCode);
   const navigate = useNavigate();
   const { session, saveSession, clearSession } = useRoomSession();
   const [room, setRoom] = useState(null);
@@ -36,7 +40,7 @@ const RoomPage = () => {
 
   useEffect(() => {
     const restoreRoom = async () => {
-      if (!sessionRoomCode || !sessionUserId || sessionRoomCode !== roomCode) {
+      if (!sessionRoomCode || !sessionUserId || sessionRoomCode !== normalizedRouteRoomCode) {
         clearSession();
         setStatus("invalid");
         return;
@@ -63,7 +67,7 @@ const RoomPage = () => {
     };
 
     restoreRoom();
-  }, [clearSession, roomCode, saveSession, sessionRoomCode, sessionUserId]);
+  }, [clearSession, normalizedRouteRoomCode, saveSession, sessionRoomCode, sessionUserId]);
 
   useEffect(() => {
     if (status !== "ready" || !sessionRoomCode || !sessionUserId) {
@@ -82,7 +86,7 @@ const RoomPage = () => {
     const applyRoomPayload = (payload) => {
       const nextRoom = payload?.room ?? payload;
 
-      if (nextRoom?.roomCode === roomCode) {
+      if (nextRoom?.roomCode === normalizedRouteRoomCode) {
         setRoom((currentRoom) => ({
           ...currentRoom,
           ...nextRoom
@@ -124,16 +128,100 @@ const RoomPage = () => {
       );
     };
 
+    const upsertPresenceParticipant = (participant = {}) => {
+      if (!participant.userId) {
+        return;
+      }
+
+      setRoom((currentRoom) => {
+        if (!currentRoom) {
+          return currentRoom;
+        }
+
+        const participants = Array.isArray(currentRoom.participants)
+          ? currentRoom.participants
+          : [];
+        const hasParticipant = participants.some((item) => item.userId === participant.userId);
+        const nextParticipants = hasParticipant
+          ? participants.map((item) =>
+            item.userId === participant.userId ? { ...item, ...participant } : item
+          )
+          : [...participants, participant];
+
+        return {
+          ...currentRoom,
+          participants: nextParticipants
+        };
+      });
+
+      setTypingUsers((currentTypingUsers) => {
+        const isCurrentUser = participant.userId === sessionUserId;
+        const withoutParticipant = currentTypingUsers.filter(
+          (item) => item.userId !== participant.userId
+        );
+
+        if (isCurrentUser || !participant.isTyping) {
+          return withoutParticipant;
+        }
+
+        return [...withoutParticipant, participant];
+      });
+    };
+
+    const removePresenceParticipant = (participantId) => {
+      if (!participantId) {
+        return;
+      }
+
+      setRoom((currentRoom) => {
+        if (!currentRoom || !Array.isArray(currentRoom.participants)) {
+          return currentRoom;
+        }
+
+        return {
+          ...currentRoom,
+          participants: currentRoom.participants.filter(
+            (participant) => participant.userId !== participantId
+          )
+        };
+      });
+      setTypingUsers((currentTypingUsers) =>
+        currentTypingUsers.filter((participant) => participant.userId !== participantId)
+      );
+    };
+
     const handlePresenceList = (payload = {}) => {
-      if (payload.roomCode !== roomCode || !Array.isArray(payload.participants)) {
+      if (
+        normalizeRoomCode(payload.roomCode) !== normalizedRouteRoomCode
+        || !Array.isArray(payload.participants)
+      ) {
         return;
       }
 
       applyPresenceParticipants(payload.participants);
     };
 
+    const handlePresenceParticipant = (payload = {}) => {
+      if (normalizeRoomCode(payload.roomCode) !== normalizedRouteRoomCode) {
+        return;
+      }
+
+      upsertPresenceParticipant(payload.participant);
+    };
+
+    const handlePresenceLeave = (payload = {}) => {
+      if (normalizeRoomCode(payload.roomCode) !== normalizedRouteRoomCode) {
+        return;
+      }
+
+      removePresenceParticipant(payload.userId || payload.participantId);
+    };
+
     const handleTypingUpdated = (payload = {}) => {
-      if (payload.roomCode !== roomCode || !Array.isArray(payload.users)) {
+      if (
+        normalizeRoomCode(payload.roomCode) !== normalizedRouteRoomCode
+        || !Array.isArray(payload.users)
+      ) {
         return;
       }
 
@@ -185,7 +273,12 @@ const RoomPage = () => {
     socket.on(SOCKET_EVENTS.USER_KICKED, handleUserKicked);
     socket.on(SOCKET_EVENTS.PARTICIPANTS_UPDATED, handleParticipantsUpdated);
     socket.on(SOCKET_EVENTS.ACTIVITY_UPDATED, handleActivityUpdated);
+    socket.on(SOCKET_EVENTS.PRESENCE_JOIN, handlePresenceParticipant);
     socket.on(SOCKET_EVENTS.PRESENCE_LIST, handlePresenceList);
+    socket.on(SOCKET_EVENTS.PRESENCE_UPDATE, handlePresenceParticipant);
+    socket.on(SOCKET_EVENTS.PRESENCE_LEAVE, handlePresenceLeave);
+    socket.on(SOCKET_EVENTS.PRESENCE_TYPING, handlePresenceParticipant);
+    socket.on(SOCKET_EVENTS.PRESENCE_STOP_TYPING, handlePresenceParticipant);
     socket.on(SOCKET_EVENTS.TYPING_UPDATED, handleTypingUpdated);
     socket.on(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
     socket.on(SOCKET_EVENTS.PRESENCE_ERROR, handlePresenceError);
@@ -205,7 +298,12 @@ const RoomPage = () => {
       socket.off(SOCKET_EVENTS.USER_KICKED, handleUserKicked);
       socket.off(SOCKET_EVENTS.PARTICIPANTS_UPDATED, handleParticipantsUpdated);
       socket.off(SOCKET_EVENTS.ACTIVITY_UPDATED, handleActivityUpdated);
+      socket.off(SOCKET_EVENTS.PRESENCE_JOIN, handlePresenceParticipant);
       socket.off(SOCKET_EVENTS.PRESENCE_LIST, handlePresenceList);
+      socket.off(SOCKET_EVENTS.PRESENCE_UPDATE, handlePresenceParticipant);
+      socket.off(SOCKET_EVENTS.PRESENCE_LEAVE, handlePresenceLeave);
+      socket.off(SOCKET_EVENTS.PRESENCE_TYPING, handlePresenceParticipant);
+      socket.off(SOCKET_EVENTS.PRESENCE_STOP_TYPING, handlePresenceParticipant);
       socket.off(SOCKET_EVENTS.TYPING_UPDATED, handleTypingUpdated);
       socket.off(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
       socket.off(SOCKET_EVENTS.PRESENCE_ERROR, handlePresenceError);
@@ -217,7 +315,7 @@ const RoomPage = () => {
       setIsSocketRoomReady(false);
       setTypingUsers([]);
     };
-  }, [clearSession, navigate, roomCode, sessionRoomCode, sessionUserId, status]);
+  }, [clearSession, navigate, normalizedRouteRoomCode, sessionRoomCode, sessionUserId, status]);
 
   if (status === "invalid") {
     return <Navigate replace to={ROUTES.HOME} />;
