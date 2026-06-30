@@ -1,0 +1,299 @@
+import { HTTP_STATUS } from "../../constants/httpStatus.js";
+import { MAX_RECENT_DELTAS } from "../../constants/roomConstants.js";
+import { Room } from "../../models/room.model.js";
+import { ApiError } from "../../utils/ApiError.js";
+import {
+  clearDocumentDirty,
+  getCachedDocument,
+  getCachedVersion,
+  getLineOwnership,
+  getRecentDeltas,
+  incrementCachedVersion,
+  markDocumentDirty,
+  pushRecentDelta,
+  setCachedDocument,
+  setLineOwnership
+} from "./document.cache.js";
+import { resolveDeltaConflict } from "./conflict.service.js";
+import { applyDeltaToDocument, validateDelta } from "./delta.service.js";
+
+const SAVE_DELAY_MS = 3000;
+
+const roomQueues = new Map();
+const saveTimers = new Map();
+const saveInProgress = new Set();
+
+const createPayloadError = (message) => new ApiError(HTTP_STATUS.BAD_REQUEST, message);
+
+const normalizeRoomCode = (roomCode) => {
+  if (typeof roomCode !== "string") {
+    return "";
+  }
+
+  return roomCode.trim().toUpperCase();
+};
+
+const assertRoomCode = (roomCode) => {
+  const normalizedRoomCode = normalizeRoomCode(roomCode);
+
+  if (!normalizedRoomCode) {
+    throw createPayloadError("roomCode is required");
+  }
+
+  return normalizedRoomCode;
+};
+
+const assertString = (value, label) => {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw createPayloadError(`${label} is required`);
+  }
+
+  return value.trim();
+};
+
+const assertObject = (value, label) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw createPayloadError(`${label} must be an object`);
+  }
+
+  return value;
+};
+
+const normalizeVersion = (value, label) => {
+  if (value === undefined || value === null || value === "") {
+    throw createPayloadError(`${label} is required`);
+  }
+
+  const numericVersion = Number(value);
+
+  if (!Number.isInteger(numericVersion) || numericVersion < 0) {
+    throw createPayloadError(`${label} must be a non-negative integer`);
+  }
+
+  return numericVersion;
+};
+
+const runRoomOperation = async (roomCode, operation) => {
+  const normalizedRoomCode = assertRoomCode(roomCode);
+  const previousOperation = roomQueues.get(normalizedRoomCode) ?? Promise.resolve();
+  const currentOperation = previousOperation
+    .catch(() => undefined)
+    .then(() => operation(normalizedRoomCode));
+
+  roomQueues.set(normalizedRoomCode, currentOperation);
+
+  try {
+    return await currentOperation;
+  } finally {
+    if (roomQueues.get(normalizedRoomCode) === currentOperation) {
+      roomQueues.delete(normalizedRoomCode);
+    }
+  }
+};
+
+const getChangedLineCount = (delta) => {
+  if (typeof delta.text !== "string" || delta.text.length === 0) {
+    return 1;
+  }
+
+  return delta.text.split("\n").length;
+};
+
+const updateLineOwnership = ({ lineOwnership, delta, userId, username }) => {
+  const hasLineOwnershipObject = lineOwnership
+    && typeof lineOwnership === "object"
+    && !Array.isArray(lineOwnership);
+  const nextLineOwnership = hasLineOwnershipObject
+    ? { ...lineOwnership }
+    : {};
+  const startLine = Math.max(1, Number(delta.lineNumber) || 1);
+  const changedLineCount = getChangedLineCount(delta);
+  const timestamp = new Date().toISOString();
+
+  for (let offset = 0; offset < changedLineCount; offset += 1) {
+    nextLineOwnership[String(startLine + offset)] = {
+      userId,
+      username,
+      updatedAt: timestamp
+    };
+  }
+
+  return nextLineOwnership;
+};
+
+const toDeltaRecord = ({ delta, version, userId, username }) => ({
+  version,
+  userId,
+  username,
+  type: delta.type,
+  position: delta.position,
+  text: delta.text,
+  length: delta.length,
+  lineNumber: delta.lineNumber,
+  timestamp: new Date().toISOString()
+});
+
+const toClientDelta = (deltaRecord) => ({
+  type: deltaRecord.type,
+  position: deltaRecord.position,
+  text: deltaRecord.text,
+  length: deltaRecord.length,
+  lineNumber: deltaRecord.lineNumber
+});
+
+const scheduleDocumentSave = (roomCode) => {
+  const normalizedRoomCode = assertRoomCode(roomCode);
+  const existingTimer = saveTimers.get(normalizedRoomCode);
+
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+  }
+
+  const timer = setTimeout(async () => {
+    saveTimers.delete(normalizedRoomCode);
+
+    if (saveInProgress.has(normalizedRoomCode)) {
+      scheduleDocumentSave(normalizedRoomCode);
+      return;
+    }
+
+    saveInProgress.add(normalizedRoomCode);
+
+    try {
+      await flushDocumentToMongo(normalizedRoomCode);
+    } catch (error) {
+      console.error(
+        `[documents] Failed to flush room ${normalizedRoomCode} to MongoDB: ${error.message}`
+      );
+    } finally {
+      saveInProgress.delete(normalizedRoomCode);
+    }
+  }, SAVE_DELAY_MS);
+
+  timer.unref?.();
+  saveTimers.set(normalizedRoomCode, timer);
+};
+
+const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
+  const userId = assertString(payload.userId, "userId");
+  const username = assertString(payload.username, "username");
+  const baseVersion = normalizeVersion(payload.baseVersion, "baseVersion");
+  const currentDocument = await getCachedDocument(normalizedRoomCode);
+  const currentVersion = await getCachedVersion(normalizedRoomCode);
+  const recentDeltas = await getRecentDeltas(normalizedRoomCode);
+  const resolvedPayload = resolveDeltaConflict(
+    {
+      roomCode: normalizedRoomCode,
+      userId,
+      username,
+      baseVersion,
+      documentLength: currentDocument.length,
+      delta: payload.delta
+    },
+    recentDeltas,
+    currentVersion
+  );
+  const acceptedDelta = validateDelta(resolvedPayload.delta, currentDocument);
+  const nextDocument = applyDeltaToDocument(currentDocument, acceptedDelta);
+  const nextVersion = await incrementCachedVersion(normalizedRoomCode);
+  const deltaRecord = toDeltaRecord({
+    delta: acceptedDelta,
+    version: nextVersion,
+    userId,
+    username
+  });
+  const currentLineOwnership = await getLineOwnership(normalizedRoomCode);
+  const lineOwnership = updateLineOwnership({
+    lineOwnership: currentLineOwnership,
+    delta: acceptedDelta,
+    userId,
+    username
+  });
+
+  await setCachedDocument(normalizedRoomCode, nextDocument);
+  await pushRecentDelta(normalizedRoomCode, deltaRecord);
+  await setLineOwnership(normalizedRoomCode, lineOwnership);
+  await markDocumentDirty(normalizedRoomCode);
+  scheduleDocumentSave(normalizedRoomCode);
+
+  return {
+    roomCode: normalizedRoomCode,
+    userId,
+    username,
+    version: nextVersion,
+    delta: toClientDelta(deltaRecord),
+    lineNumber: deltaRecord.lineNumber,
+    lineOwnership,
+    conflictResolved: resolvedPayload.conflictResolved,
+    transformedBy: resolvedPayload.transformedBy,
+    timestamp: deltaRecord.timestamp
+  };
+};
+
+const flushDocumentToMongoForRoom = async (normalizedRoomCode) => {
+  const document = await getCachedDocument(normalizedRoomCode);
+  const version = await getCachedVersion(normalizedRoomCode);
+  const recentDeltas = await getRecentDeltas(normalizedRoomCode);
+  const updateResult = await Room.updateOne(
+    { roomCode: normalizedRoomCode },
+    {
+      $set: {
+        document,
+        documentVersion: version,
+        recentDeltas: recentDeltas.slice(-MAX_RECENT_DELTAS),
+        updatedAt: new Date()
+      }
+    }
+  );
+
+  if (!updateResult.matchedCount) {
+    throw new ApiError(HTTP_STATUS.NOT_FOUND, "Room not found");
+  }
+
+  await clearDocumentDirty(normalizedRoomCode);
+
+  return {
+    roomCode: normalizedRoomCode,
+    document,
+    version,
+    recentDeltas: recentDeltas.slice(-MAX_RECENT_DELTAS)
+  };
+};
+
+export const getDocumentState = async (roomCode) => {
+  const normalizedRoomCode = assertRoomCode(roomCode);
+  const document = await getCachedDocument(normalizedRoomCode);
+  const version = await getCachedVersion(normalizedRoomCode);
+  const recentDeltas = await getRecentDeltas(normalizedRoomCode);
+  const lineOwnership = await getLineOwnership(normalizedRoomCode);
+
+  return {
+    roomCode: normalizedRoomCode,
+    document,
+    version,
+    recentDeltas,
+    lineOwnership
+  };
+};
+
+export const applyEditorDelta = async (payload = {}) => {
+  const safePayload = assertObject(payload, "Delta payload");
+  const normalizedRoomCode = assertRoomCode(safePayload.roomCode);
+
+  return runRoomOperation(normalizedRoomCode, (roomCode) =>
+    applyEditorDeltaForRoom(safePayload, roomCode)
+  );
+};
+
+export const flushDocumentToMongo = async (roomCode) => {
+  const normalizedRoomCode = assertRoomCode(roomCode);
+
+  const existingTimer = saveTimers.get(normalizedRoomCode);
+
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    saveTimers.delete(normalizedRoomCode);
+  }
+
+  return runRoomOperation(normalizedRoomCode, flushDocumentToMongoForRoom);
+};
