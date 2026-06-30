@@ -1,4 +1,4 @@
-import { Activity, Circle } from "lucide-react";
+import { Activity, Circle, Crown } from "lucide-react";
 
 const getTypingLabel = (typingUsers = []) => {
   if (typingUsers.length === 0) {
@@ -59,10 +59,20 @@ const PresencePlaceholder = ({
                 </span>
                 <span className="truncate text-sm text-heading">{participant.username}</span>
               </div>
-              <Circle
-                className={participant.isOnline ? "fill-success text-success" : "fill-muted text-muted"}
-                size={9}
-              />
+              <div className="flex shrink-0 items-center gap-2">
+                <Circle
+                  className={participant.isOnline ? "fill-success text-success" : "fill-muted text-muted"}
+                  size={9}
+                />
+                {participant.isHost ? (
+                  <span
+                    className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-warning/40 bg-warning/10 text-warning"
+                    title="Host"
+                  >
+                    <Crown size={12} />
+                  </span>
+                ) : null}
+              </div>
             </div>
           ))}
         </div>

@@ -46,6 +46,7 @@ const getOwnershipSummary = (lineOwnership, charOwnership) => {
 };
 
 const TYPING_STOP_DELAY_MS = 1200;
+const TYPING_RENEW_INTERVAL_MS = 700;
 
 const CodeEditor = ({
   initialDocument = "",
@@ -57,6 +58,7 @@ const CodeEditor = ({
 }) => {
   const [editorScroll, setEditorScroll] = useState({ left: 0, top: 0 });
   const typingStopTimerRef = useRef(null);
+  const typingRenewedAtRef = useRef(0);
   const isTypingRef = useRef(false);
   const {
     charOwnership,
@@ -88,8 +90,9 @@ const CodeEditor = ({
       return;
     }
 
-    socket.emit(SOCKET_EVENTS.TYPING_STOP, { roomCode });
+    socket.emit(SOCKET_EVENTS.PRESENCE_STOP_TYPING, { roomCode });
     isTypingRef.current = false;
+    typingRenewedAtRef.current = 0;
   };
 
   const scheduleTypingStop = () => {
@@ -102,21 +105,30 @@ const CodeEditor = ({
     }, TYPING_STOP_DELAY_MS);
   };
 
-  const emitTypingStart = () => {
+  const emitTypingStart = (cursorPosition = null) => {
     if (!canEdit || !roomCode) {
       return;
     }
 
-    if (!isTypingRef.current) {
-      socket.emit(SOCKET_EVENTS.TYPING_START, { roomCode });
+    const now = Date.now();
+
+    if (
+      !isTypingRef.current
+      || now - typingRenewedAtRef.current >= TYPING_RENEW_INTERVAL_MS
+    ) {
+      socket.emit(SOCKET_EVENTS.PRESENCE_TYPING, {
+        roomCode,
+        cursorPosition
+      });
       isTypingRef.current = true;
+      typingRenewedAtRef.current = now;
     }
 
     scheduleTypingStop();
   };
 
   const handleChange = (event) => {
-    emitTypingStart();
+    emitTypingStart(event.target.selectionStart);
     handleLocalChange(event.target.value, event.target.selectionStart);
   };
 

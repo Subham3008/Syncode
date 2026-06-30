@@ -1,12 +1,8 @@
 import { HTTP_STATUS } from "../../constants/httpStatus.js";
 import { SOCKET_EVENTS } from "../../constants/socketEvents.js";
 import { ApiError } from "../../utils/ApiError.js";
+import { updateTypingPresence } from "../../modules/presence/presence.service.js";
 import { getUserBySocket } from "../socket.store.js";
-
-const TYPING_TTL_MS = 2500;
-
-const typingBySocket = new Map();
-const typingTimers = new Map();
 
 const normalizeRoomCode = (roomCode) => {
   if (typeof roomCode !== "string") {
@@ -50,56 +46,8 @@ const assertSocketCanAccessRoom = ({ socket, roomCode }) => {
   };
 };
 
-const getRoomTypingUsers = (roomCode) =>
-  Array.from(typingBySocket.values())
-    .filter((typingUser) => typingUser.roomCode === roomCode)
-    .map(({ color, userId, username }) => ({
-      color,
-      userId,
-      username
-    }));
-
-const broadcastTypingUsers = (io, roomCode) => {
-  io.to(roomCode).emit(SOCKET_EVENTS.TYPING_UPDATED, {
-    roomCode,
-    users: getRoomTypingUsers(roomCode)
-  });
-};
-
-const clearTypingTimer = (socketId) => {
-  const timer = typingTimers.get(socketId);
-
-  if (timer) {
-    clearTimeout(timer);
-    typingTimers.delete(socketId);
-  }
-};
-
-const stopTyping = ({ io, roomCode = null, socketId }) => {
-  const typingUser = typingBySocket.get(socketId);
-  const targetRoomCode = roomCode || typingUser?.roomCode;
-
-  clearTypingTimer(socketId);
-  typingBySocket.delete(socketId);
-
-  if (targetRoomCode) {
-    broadcastTypingUsers(io, targetRoomCode);
-  }
-};
-
-const scheduleTypingExpiry = ({ io, socketId }) => {
-  clearTypingTimer(socketId);
-
-  const timer = setTimeout(() => {
-    stopTyping({ io, socketId });
-  }, TYPING_TTL_MS);
-
-  timer.unref?.();
-  typingTimers.set(socketId, timer);
-};
-
 export const registerPresenceHandlers = (io, socket) => {
-  socket.on(SOCKET_EVENTS.TYPING_START, (payload = {}) => {
+  const handleTypingStart = (payload = {}) => {
     try {
       const safePayload = normalizePayload(payload);
       const typingUser = assertSocketCanAccessRoom({
@@ -107,37 +55,41 @@ export const registerPresenceHandlers = (io, socket) => {
         roomCode: safePayload.roomCode
       });
 
-      typingBySocket.set(socket.id, typingUser);
-      scheduleTypingExpiry({ io, socketId: socket.id });
-      broadcastTypingUsers(io, typingUser.roomCode);
-    } catch (error) {
-      socket.emit(SOCKET_EVENTS.PRESENCE_ERROR, getErrorPayload(error));
-    }
-  });
-
-  socket.on(SOCKET_EVENTS.TYPING_STOP, (payload = {}) => {
-    try {
-      const safePayload = normalizePayload(payload);
-      const typingUser = assertSocketCanAccessRoom({
-        socket,
-        roomCode: safePayload.roomCode
-      });
-
-      stopTyping({
+      updateTypingPresence({
         io,
         roomCode: typingUser.roomCode,
-        socketId: socket.id
+        socketId: socket.id,
+        isTyping: true,
+        cursorPosition: Number.isInteger(safePayload.cursorPosition)
+          ? safePayload.cursorPosition
+          : null
       });
     } catch (error) {
       socket.emit(SOCKET_EVENTS.PRESENCE_ERROR, getErrorPayload(error));
     }
-  });
+  };
 
-  socket.on(SOCKET_EVENTS.ROOM_LEAVE, () => {
-    stopTyping({ io, socketId: socket.id });
-  });
+  const handleTypingStop = (payload = {}) => {
+    try {
+      const safePayload = normalizePayload(payload);
+      const typingUser = assertSocketCanAccessRoom({
+        socket,
+        roomCode: safePayload.roomCode
+      });
 
-  socket.on(SOCKET_EVENTS.DISCONNECT, () => {
-    stopTyping({ io, socketId: socket.id });
-  });
+      updateTypingPresence({
+        io,
+        roomCode: typingUser.roomCode,
+        socketId: socket.id,
+        isTyping: false
+      });
+    } catch (error) {
+      socket.emit(SOCKET_EVENTS.PRESENCE_ERROR, getErrorPayload(error));
+    }
+  };
+
+  socket.on(SOCKET_EVENTS.PRESENCE_TYPING, handleTypingStart);
+  socket.on(SOCKET_EVENTS.PRESENCE_STOP_TYPING, handleTypingStop);
+  socket.on(SOCKET_EVENTS.TYPING_START, handleTypingStart);
+  socket.on(SOCKET_EVENTS.TYPING_STOP, handleTypingStop);
 };

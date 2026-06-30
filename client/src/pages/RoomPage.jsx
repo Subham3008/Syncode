@@ -114,6 +114,24 @@ const RoomPage = () => {
       setRoom((currentRoom) => currentRoom ? { ...currentRoom, activityLog } : currentRoom);
     };
 
+    const applyPresenceParticipants = (participants = []) => {
+      setRoom((currentRoom) => currentRoom ? { ...currentRoom, participants } : currentRoom);
+
+      setTypingUsers(
+        participants.filter(
+          (participant) => participant.isTyping && participant.userId !== sessionUserId
+        )
+      );
+    };
+
+    const handlePresenceList = (payload = {}) => {
+      if (payload.roomCode !== roomCode || !Array.isArray(payload.participants)) {
+        return;
+      }
+
+      applyPresenceParticipants(payload.participants);
+    };
+
     const handleTypingUpdated = (payload = {}) => {
       if (payload.roomCode !== roomCode || !Array.isArray(payload.users)) {
         return;
@@ -167,6 +185,7 @@ const RoomPage = () => {
     socket.on(SOCKET_EVENTS.USER_KICKED, handleUserKicked);
     socket.on(SOCKET_EVENTS.PARTICIPANTS_UPDATED, handleParticipantsUpdated);
     socket.on(SOCKET_EVENTS.ACTIVITY_UPDATED, handleActivityUpdated);
+    socket.on(SOCKET_EVENTS.PRESENCE_LIST, handlePresenceList);
     socket.on(SOCKET_EVENTS.TYPING_UPDATED, handleTypingUpdated);
     socket.on(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
     socket.on(SOCKET_EVENTS.PRESENCE_ERROR, handlePresenceError);
@@ -186,6 +205,7 @@ const RoomPage = () => {
       socket.off(SOCKET_EVENTS.USER_KICKED, handleUserKicked);
       socket.off(SOCKET_EVENTS.PARTICIPANTS_UPDATED, handleParticipantsUpdated);
       socket.off(SOCKET_EVENTS.ACTIVITY_UPDATED, handleActivityUpdated);
+      socket.off(SOCKET_EVENTS.PRESENCE_LIST, handlePresenceList);
       socket.off(SOCKET_EVENTS.TYPING_UPDATED, handleTypingUpdated);
       socket.off(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
       socket.off(SOCKET_EVENTS.PRESENCE_ERROR, handlePresenceError);

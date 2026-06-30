@@ -14,6 +14,11 @@ import {
   roomSocketRejoinSchema
 } from "../../modules/rooms/room.validator.js";
 import {
+  emitPresenceList,
+  removePresenceParticipant,
+  upsertPresenceParticipant
+} from "../../modules/presence/presence.service.js";
+import {
   addSocketToRoom,
   addSocketUser,
   clearSocketFromAllMaps,
@@ -43,6 +48,7 @@ const emitRoomState = (io, room) => {
   const roomDTO = toRoomDTO(room);
   io.to(room.roomCode).emit(SOCKET_EVENTS.PARTICIPANTS_UPDATED, roomDTO.participants);
   io.to(room.roomCode).emit(SOCKET_EVENTS.ACTIVITY_UPDATED, roomDTO.activityLog);
+  emitPresenceList(io, room.roomCode, room.participants, room.hostId);
 };
 
 const getDisconnectKey = ({ roomCode, userId }) => `${roomCode}:${userId}`;
@@ -124,12 +130,24 @@ const attachSocketToRoom = async ({ io, socket, room, sessionUser }) => {
     }
   });
   emitRoomState(io, onlineRoom);
+  upsertPresenceParticipant({
+    io,
+    room: onlineRoom,
+    participant,
+    socketId: socket.id
+  });
 };
 
 const detachSocketFromRoom = async ({ io, socket, roomCode, userId }) => {
   const userData = clearSocketFromAllMaps(socket.id) ?? { roomCode, userId };
 
   if (userData.roomCode) {
+    removePresenceParticipant({
+      io,
+      roomCode: userData.roomCode,
+      socketId: socket.id,
+      userId: userData.userId
+    });
     socket.leave(userData.roomCode);
   }
 
@@ -162,6 +180,14 @@ const leaveSocketRoom = async ({ io, socket, roomCode, userId }) => {
   });
 
   if (result?.room) {
+    removePresenceParticipant({
+      hostId: result.room.hostId,
+      io,
+      roomCode: userData.roomCode,
+      socketId: socket.id,
+      userId: userData.userId,
+      participants: result.room.participants
+    });
     socket.to(userData.roomCode).emit(SOCKET_EVENTS.ROOM_LEFT, {
       userId: userData.userId,
       username: result.participant.username

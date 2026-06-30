@@ -14,6 +14,11 @@ import {
   hostRenameRoomSocketSchema
 } from "../../modules/rooms/room.validator.js";
 import {
+  emitPresenceList,
+  removePresenceParticipant,
+  removeRoomPresence
+} from "../../modules/presence/presence.service.js";
+import {
   getSocketIdByUser,
   removeSocketFromRoom,
   removeSocketUser
@@ -42,6 +47,7 @@ const broadcastRoomState = (io, room, eventName) => {
 
   io.to(room.roomCode).emit(SOCKET_EVENTS.PARTICIPANTS_UPDATED, roomDTO.participants);
   io.to(room.roomCode).emit(SOCKET_EVENTS.ACTIVITY_UPDATED, roomDTO.activityLog);
+  emitPresenceList(io, room.roomCode, room.participants, room.hostId);
 };
 
 const acknowledgeSuccess = (acknowledge, room) => {
@@ -97,6 +103,15 @@ export const registerHostHandlers = (io, socket) => {
         removeSocketUser(targetSocketId);
       }
 
+      removePresenceParticipant({
+        hostId: room.hostId,
+        io,
+        roomCode: room.roomCode,
+        socketId: targetSocketId,
+        userId: kickedParticipant.userId,
+        participants: room.participants
+      });
+
       broadcastRoomState(io, room);
       acknowledgeSuccess(acknowledge, room);
     } catch (error) {
@@ -121,6 +136,7 @@ export const registerHostHandlers = (io, socket) => {
     try {
       const data = hostCloseRoomSocketSchema.parse(payload);
       const room = await closeRoom(data);
+      removeRoomPresence({ io, roomCode: room.roomCode });
       broadcastRoomState(io, room, SOCKET_EVENTS.ROOM_CLOSED);
       acknowledgeSuccess(acknowledge, room);
     } catch (error) {

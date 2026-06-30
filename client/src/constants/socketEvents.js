@@ -25,6 +25,12 @@ export const SOCKET_EVENTS = {
   TYPING_START: "typing:start",
   TYPING_STOP: "typing:stop",
   TYPING_UPDATED: "typing:updated",
+  PRESENCE_JOIN: "presence:join",
+  PRESENCE_LIST: "presence:list",
+  PRESENCE_UPDATE: "presence:update",
+  PRESENCE_LEAVE: "presence:leave",
+  PRESENCE_TYPING: "presence:typing",
+  PRESENCE_STOP_TYPING: "presence:stop-typing",
   PRESENCE_ERROR: "presence:error",
 
   HOST_RENAME_ROOM: "host:rename-room",
