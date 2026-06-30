@@ -1,9 +1,6 @@
 import { HTTP_STATUS } from "../../constants/httpStatus.js";
-import { MAX_RECENT_DELTAS } from "../../constants/roomConstants.js";
-import { Room } from "../../models/room.model.js";
 import { ApiError } from "../../utils/ApiError.js";
 import {
-  clearDocumentDirty,
   getCachedDocument,
   getCachedVersion,
   getLineOwnership,
@@ -16,12 +13,9 @@ import {
 } from "./document.cache.js";
 import { resolveDeltaConflict } from "./conflict.service.js";
 import { applyDeltaToDocument, validateDelta } from "./delta.service.js";
-
-const SAVE_DELAY_MS = 3000;
+import { scheduleDocumentSave } from "./document.persistence.js";
 
 const roomQueues = new Map();
-const saveTimers = new Map();
-const saveInProgress = new Set();
 
 const createPayloadError = (message) => new ApiError(HTTP_STATUS.BAD_REQUEST, message);
 
@@ -141,39 +135,6 @@ const toClientDelta = (deltaRecord) => ({
   lineNumber: deltaRecord.lineNumber
 });
 
-const scheduleDocumentSave = (roomCode) => {
-  const normalizedRoomCode = assertRoomCode(roomCode);
-  const existingTimer = saveTimers.get(normalizedRoomCode);
-
-  if (existingTimer) {
-    clearTimeout(existingTimer);
-  }
-
-  const timer = setTimeout(async () => {
-    saveTimers.delete(normalizedRoomCode);
-
-    if (saveInProgress.has(normalizedRoomCode)) {
-      scheduleDocumentSave(normalizedRoomCode);
-      return;
-    }
-
-    saveInProgress.add(normalizedRoomCode);
-
-    try {
-      await flushDocumentToMongo(normalizedRoomCode);
-    } catch (error) {
-      console.error(
-        `[documents] Failed to flush room ${normalizedRoomCode} to MongoDB: ${error.message}`
-      );
-    } finally {
-      saveInProgress.delete(normalizedRoomCode);
-    }
-  }, SAVE_DELAY_MS);
-
-  timer.unref?.();
-  saveTimers.set(normalizedRoomCode, timer);
-};
-
 const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
   const userId = assertString(payload.userId, "userId");
   const username = assertString(payload.username, "username");
@@ -230,36 +191,6 @@ const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
   };
 };
 
-const flushDocumentToMongoForRoom = async (normalizedRoomCode) => {
-  const document = await getCachedDocument(normalizedRoomCode);
-  const version = await getCachedVersion(normalizedRoomCode);
-  const recentDeltas = await getRecentDeltas(normalizedRoomCode);
-  const updateResult = await Room.updateOne(
-    { roomCode: normalizedRoomCode },
-    {
-      $set: {
-        document,
-        documentVersion: version,
-        recentDeltas: recentDeltas.slice(-MAX_RECENT_DELTAS),
-        updatedAt: new Date()
-      }
-    }
-  );
-
-  if (!updateResult.matchedCount) {
-    throw new ApiError(HTTP_STATUS.NOT_FOUND, "Room not found");
-  }
-
-  await clearDocumentDirty(normalizedRoomCode);
-
-  return {
-    roomCode: normalizedRoomCode,
-    document,
-    version,
-    recentDeltas: recentDeltas.slice(-MAX_RECENT_DELTAS)
-  };
-};
-
 export const getDocumentState = async (roomCode) => {
   const normalizedRoomCode = assertRoomCode(roomCode);
   const document = await getCachedDocument(normalizedRoomCode);
@@ -285,15 +216,4 @@ export const applyEditorDelta = async (payload = {}) => {
   );
 };
 
-export const flushDocumentToMongo = async (roomCode) => {
-  const normalizedRoomCode = assertRoomCode(roomCode);
-
-  const existingTimer = saveTimers.get(normalizedRoomCode);
-
-  if (existingTimer) {
-    clearTimeout(existingTimer);
-    saveTimers.delete(normalizedRoomCode);
-  }
-
-  return runRoomOperation(normalizedRoomCode, flushDocumentToMongoForRoom);
-};
+export { flushDocumentToMongo } from "./document.persistence.js";

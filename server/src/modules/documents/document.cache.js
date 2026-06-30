@@ -41,6 +41,18 @@ const parseVersion = (value) => {
   return Number.isInteger(version) && version >= 0 ? version : 0;
 };
 
+const normalizeLineOwnership = (lineOwnership) => {
+  if (!lineOwnership || typeof lineOwnership !== "object" || Array.isArray(lineOwnership)) {
+    return {};
+  }
+
+  if (lineOwnership instanceof Map) {
+    return Object.fromEntries(lineOwnership);
+  }
+
+  return { ...lineOwnership };
+};
+
 export const getDocumentKey = (roomCode) => `room:${assertRoomCode(roomCode)}:document`;
 export const getVersionKey = (roomCode) => `room:${assertRoomCode(roomCode)}:version`;
 export const getRecentDeltasKey = (roomCode) => `room:${assertRoomCode(roomCode)}:recentDeltas`;
@@ -50,7 +62,7 @@ export const getDirtyKey = (roomCode) => `room:${assertRoomCode(roomCode)}:dirty
 export const hydrateDocumentCache = async (roomCode) => {
   const normalizedRoomCode = assertRoomCode(roomCode);
   const room = await Room.findOne({ roomCode: normalizedRoomCode })
-    .select("document documentVersion recentDeltas")
+    .select("document documentVersion recentDeltas lineOwnership")
     .lean();
 
   if (!room) {
@@ -62,10 +74,12 @@ export const hydrateDocumentCache = async (roomCode) => {
   const recentDeltas = Array.isArray(room.recentDeltas)
     ? room.recentDeltas.slice(-RECENT_DELTAS_LIMIT)
     : [];
+  const lineOwnership = normalizeLineOwnership(room.lineOwnership);
 
   const multi = redisClient.multi();
   multi.set(getDocumentKey(normalizedRoomCode), document);
   multi.set(getVersionKey(normalizedRoomCode), String(version));
+  multi.set(getLineOwnershipKey(normalizedRoomCode), JSON.stringify(lineOwnership));
   multi.del(getRecentDeltasKey(normalizedRoomCode));
 
   for (const delta of recentDeltas) {
@@ -78,7 +92,8 @@ export const hydrateDocumentCache = async (roomCode) => {
   return {
     document,
     version,
-    recentDeltas
+    recentDeltas,
+    lineOwnership
   };
 };
 
@@ -157,9 +172,7 @@ export const getLineOwnership = async (roomCode) => {
 };
 
 export const setLineOwnership = async (roomCode, lineOwnership) => {
-  const safeLineOwnership = lineOwnership && typeof lineOwnership === "object"
-    ? lineOwnership
-    : {};
+  const safeLineOwnership = normalizeLineOwnership(lineOwnership);
 
   await redisClient.set(getLineOwnershipKey(roomCode), JSON.stringify(safeLineOwnership));
   return safeLineOwnership;

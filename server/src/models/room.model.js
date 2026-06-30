@@ -34,6 +34,16 @@ const deltaSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const lineOwnershipEntrySchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true, trim: true },
+    username: { type: String, required: true, trim: true },
+    color: { type: String, default: "", trim: true },
+    updatedAt: { type: Date, default: Date.now }
+  },
+  { _id: false }
+);
+
 const activityLogSchema = new mongoose.Schema(
   {
     type: {
@@ -69,6 +79,7 @@ const roomSchema = new mongoose.Schema(
     documentVersion: { type: Number, default: 0 },
     participants: { type: [participantSchema], default: [] },
     recentDeltas: { type: [deltaSchema], default: [] },
+    lineOwnership: { type: Map, of: lineOwnershipEntrySchema, default: {} },
     activityLog: { type: [activityLogSchema], default: [] },
     isLocked: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true, index: true }
