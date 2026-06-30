@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import CodeEditor from "../components/editor/CodeEditor.jsx";
+import EditorPlaceholder from "../components/editor/EditorPlaceholder.jsx";
 import PresencePlaceholder from "../components/presence/PresencePlaceholder.jsx";
 import Toast from "../components/common/Toast.jsx";
 import StatePanel from "../components/common/StatePanel.jsx";
