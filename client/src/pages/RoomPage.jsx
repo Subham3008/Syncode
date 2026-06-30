@@ -180,16 +180,37 @@ const RoomPage = () => {
   }
 
   const handleLeave = () => {
+    const finishLeave = () => {
+      if (socket.connected) {
+        socket.disconnect();
+      }
+
+      clearSession();
+      navigate(ROUTES.HOME);
+    };
+
     if (socket.connected) {
+      let timeoutId;
+      let hasFinished = false;
+      const finishOnce = () => {
+        if (hasFinished) {
+          return;
+        }
+
+        hasFinished = true;
+        window.clearTimeout(timeoutId);
+        finishLeave();
+      };
+
+      timeoutId = window.setTimeout(finishOnce, 500);
       socket.emit(SOCKET_EVENTS.ROOM_LEAVE, {
         roomCode: sessionRoomCode,
         userId: sessionUserId
-      });
-      socket.disconnect();
+      }, finishOnce);
+      return;
     }
 
-    clearSession();
-    navigate(ROUTES.HOME);
+    finishLeave();
   };
 
   const handleRoomClosed = () => {

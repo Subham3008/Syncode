@@ -144,10 +144,11 @@ export const rejoinRoom = async ({ roomCode, userId }) => {
     throw new ApiError(HTTP_STATUS.FORBIDDEN, "Room is closed");
   }
 
+  const isHostRejoin = room.hostId === normalizedUserId;
   let participant = room.participants.find((item) => item.userId === normalizedUserId);
 
   if (!participant) {
-    if (room.hostId !== normalizedUserId) {
+    if (!isHostRejoin) {
       throw new ApiError(HTTP_STATUS.NOT_FOUND, "Participant not found in this room");
     }
 
@@ -162,16 +163,22 @@ export const rejoinRoom = async ({ roomCode, userId }) => {
   }
 
   const lastSeen = now();
+  const participantUpdates = {
+    "participants.$.isOnline": true,
+    "participants.$.lastSeen": lastSeen
+  };
+
+  if (isHostRejoin) {
+    participantUpdates["participants.$.isHost"] = true;
+  }
+
   const updateResult = await Room.updateOne(
     {
       roomCode: normalizedRoomCode,
       "participants.userId": normalizedUserId
     },
     {
-      $set: {
-        "participants.$.isOnline": true,
-        "participants.$.lastSeen": lastSeen
-      }
+      $set: participantUpdates
     }
   );
 
@@ -283,12 +290,20 @@ export const markParticipantOnline = async ({ roomCode, userId, socketId }) => {
   return { room, participant };
 };
 
-export const markParticipantOffline = async ({ roomCode, userId }) => {
+export const markParticipantOffline = async ({ roomCode, userId, socketId = null }) => {
   const room = await findRoomOrThrow(roomCode);
   const participant = room.participants.find((item) => item.userId === userId);
 
   if (!participant) {
     return null;
+  }
+
+  if (socketId && participant.socketId && participant.socketId !== socketId) {
+    return { room, participant, isStaleSocket: true };
+  }
+
+  if (!participant.isOnline && !participant.socketId) {
+    return { room, participant, wasAlreadyOffline: true };
   }
 
   participant.socketId = null;

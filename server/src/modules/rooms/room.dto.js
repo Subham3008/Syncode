@@ -1,9 +1,9 @@
-export const toParticipantDTO = (participant) => ({
+export const toParticipantDTO = (participant, hostId = "") => ({
   userId: participant.userId,
   username: participant.username,
   color: participant.color,
   isOnline: participant.isOnline,
-  isHost: participant.isHost,
+  isHost: participant.isHost || participant.userId === hostId,
   joinedAt: participant.joinedAt,
   lastSeen: participant.lastSeen
 });
@@ -21,7 +21,7 @@ export const toRoomDTO = (room) => ({
   roomName: room.roomName,
   hostId: room.hostId,
   hostName: room.hostName,
-  participants: room.participants?.map(toParticipantDTO) ?? [],
+  participants: room.participants?.map((participant) => toParticipantDTO(participant, room.hostId)) ?? [],
   activityLog: room.activityLog?.map(toActivityDTO) ?? [],
   document: room.document,
   documentVersion: room.documentVersion,

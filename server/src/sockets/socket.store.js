@@ -10,7 +10,7 @@ export const addSocketUser = (socketId, userData) => {
 export const removeSocketUser = (socketId) => {
   const userData = socketUserMap.get(socketId);
 
-  if (userData) {
+  if (userData && userSocketMap.get(userData.userId) === socketId) {
     userSocketMap.delete(userData.userId);
   }
 

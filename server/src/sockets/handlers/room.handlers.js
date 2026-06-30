@@ -17,9 +17,13 @@ import {
   addSocketToRoom,
   addSocketUser,
   clearSocketFromAllMaps,
+  getSocketIdByUser,
   getUserBySocket,
   removeSocketFromRoom
 } from "../socket.store.js";
+
+const DISCONNECT_REJOIN_GRACE_MS = 1500;
+const pendingDisconnects = new Map();
 
 const getErrorMessage = (error) => {
   if (error instanceof ZodError) {
@@ -41,7 +45,61 @@ const emitRoomState = (io, room) => {
   io.to(room.roomCode).emit(SOCKET_EVENTS.ACTIVITY_UPDATED, roomDTO.activityLog);
 };
 
+const getDisconnectKey = ({ roomCode, userId }) => `${roomCode}:${userId}`;
+
+const clearPendingDisconnect = ({ roomCode, userId }) => {
+  if (!roomCode || !userId) {
+    return;
+  }
+
+  const disconnectKey = getDisconnectKey({ roomCode, userId });
+  const timeoutId = pendingDisconnects.get(disconnectKey);
+
+  if (timeoutId) {
+    clearTimeout(timeoutId);
+    pendingDisconnects.delete(disconnectKey);
+  }
+};
+
+const scheduleParticipantOffline = ({ io, roomCode, userId, socketId }) => {
+  if (!roomCode || !userId) {
+    return;
+  }
+
+  clearPendingDisconnect({ roomCode, userId });
+
+  const disconnectKey = getDisconnectKey({ roomCode, userId });
+  const timeoutId = setTimeout(async () => {
+    pendingDisconnects.delete(disconnectKey);
+
+    if (getSocketIdByUser(userId)) {
+      return;
+    }
+
+    try {
+      const result = await markParticipantOffline({ roomCode, userId, socketId });
+
+      if (result?.room && !result.isStaleSocket && !result.wasAlreadyOffline) {
+        io.to(roomCode).emit(SOCKET_EVENTS.ROOM_LEFT, {
+          userId,
+          username: result.participant.username
+        });
+        emitRoomState(io, result.room);
+      }
+    } catch {
+      // The room may have been closed or the participant removed while the grace timer was pending.
+    }
+  }, DISCONNECT_REJOIN_GRACE_MS);
+
+  pendingDisconnects.set(disconnectKey, timeoutId);
+};
+
 const attachSocketToRoom = async ({ io, socket, room, sessionUser }) => {
+  clearPendingDisconnect({
+    roomCode: room.roomCode,
+    userId: sessionUser.userId
+  });
+
   socket.join(room.roomCode);
   addSocketUser(socket.id, {
     color: sessionUser.color,
@@ -75,24 +133,24 @@ const detachSocketFromRoom = async ({ io, socket, roomCode, userId }) => {
     socket.leave(userData.roomCode);
   }
 
-  const result = await markParticipantOffline({
-    roomCode: userData.roomCode,
-    userId: userData.userId
-  });
+  const activeSocketId = getSocketIdByUser(userData.userId);
 
-  if (result?.room) {
-    socket.to(userData.roomCode).emit(SOCKET_EVENTS.ROOM_LEFT, {
-      userId: userData.userId,
-      username: result.participant.username
-    });
-    emitRoomState(io, result.room);
+  if (activeSocketId && activeSocketId !== socket.id) {
+    return;
   }
 
-  removeSocketFromRoom(userData.roomCode, socket.id);
+  scheduleParticipantOffline({
+    io,
+    roomCode: userData.roomCode,
+    userId: userData.userId,
+    socketId: socket.id
+  });
 };
 
 const leaveSocketRoom = async ({ io, socket, roomCode, userId }) => {
   const userData = clearSocketFromAllMaps(socket.id) ?? { roomCode, userId };
+
+  clearPendingDisconnect(userData);
 
   if (userData.roomCode) {
     socket.leave(userData.roomCode);
@@ -135,12 +193,23 @@ export const registerRoomHandlers = (io, socket) => {
     }
   });
 
-  socket.on(SOCKET_EVENTS.ROOM_LEAVE, async (payload = {}) => {
+  socket.on(SOCKET_EVENTS.ROOM_LEAVE, async (payload = {}, acknowledge) => {
     try {
       const storedUser = getUserBySocket(socket.id);
       const data = storedUser ?? roomSocketLeaveSchema.parse(payload);
       await leaveSocketRoom({ io, socket, ...data });
+
+      if (typeof acknowledge === "function") {
+        acknowledge({ success: true });
+      }
     } catch (error) {
+      if (typeof acknowledge === "function") {
+        acknowledge({
+          success: false,
+          message: getErrorMessage(error)
+        });
+      }
+
       emitRoomError(socket, error);
     }
   });
