@@ -2,29 +2,6 @@ import { useCallback, useState } from "react";
 
 export const ROOM_SESSION_KEY = "syncode.roomSession";
 const LEGACY_ROOM_SESSION_KEY = "syncode-session";
-const readStorageItem = (storage, key) => {
-  try {
-    return storage?.getItem(key) ?? null;
-  } catch {
-    return null;
-  }
-};
-
-const writeStorageItem = (storage, key, value) => {
-  try {
-    storage?.setItem(key, value);
-  } catch {
-    // Storage can be unavailable in private windows; keep the in-memory state.
-  }
-};
-
-const removeStorageItem = (storage, key) => {
-  try {
-    storage?.removeItem(key);
-  } catch {
-    // Ignore storage cleanup failures.
-  }
-};
 
 const sanitizeRoomSession = (session) => {
   if (!session || typeof session !== "object" || Array.isArray(session)) {
@@ -50,14 +27,13 @@ const sanitizeRoomSession = (session) => {
 };
 
 const readRawSession = () => {
-  const tabSession = readStorageItem(window.sessionStorage, ROOM_SESSION_KEY);
+  const currentSession = window.localStorage.getItem(ROOM_SESSION_KEY);
 
-  if (tabSession) {
-    return tabSession;
+  if (currentSession) {
+    return currentSession;
   }
 
-  return readStorageItem(window.localStorage, ROOM_SESSION_KEY)
-    ?? readStorageItem(window.localStorage, LEGACY_ROOM_SESSION_KEY);
+  return window.localStorage.getItem(LEGACY_ROOM_SESSION_KEY);
 };
 
 export const getStoredRoomSession = () => {
@@ -90,9 +66,8 @@ export const persistRoomSession = (session) => {
   }
 
   if (typeof window !== "undefined") {
-    writeStorageItem(window.sessionStorage, ROOM_SESSION_KEY, JSON.stringify(nextSession));
-    removeStorageItem(window.localStorage, ROOM_SESSION_KEY);
-    removeStorageItem(window.localStorage, LEGACY_ROOM_SESSION_KEY);
+    window.localStorage.setItem(ROOM_SESSION_KEY, JSON.stringify(nextSession));
+    window.localStorage.removeItem(LEGACY_ROOM_SESSION_KEY);
   }
 
   return nextSession;
@@ -100,9 +75,8 @@ export const persistRoomSession = (session) => {
 
 export const clearStoredRoomSession = () => {
   if (typeof window !== "undefined") {
-    removeStorageItem(window.sessionStorage, ROOM_SESSION_KEY);
-    removeStorageItem(window.localStorage, ROOM_SESSION_KEY);
-    removeStorageItem(window.localStorage, LEGACY_ROOM_SESSION_KEY);
+    window.localStorage.removeItem(ROOM_SESSION_KEY);
+    window.localStorage.removeItem(LEGACY_ROOM_SESSION_KEY);
   }
 };
 

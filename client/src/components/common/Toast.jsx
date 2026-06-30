@@ -20,15 +20,12 @@ const Toast = ({ message, tone = "success", onClose }) => {
   const Icon = toneConfig.icon;
 
   return (
-    <div
-      className={`fixed right-4 top-20 z-50 flex w-[calc(100vw-2rem)] max-w-[360px] items-start gap-3 rounded-md border px-3.5 py-3 text-sm leading-5 shadow-2xl shadow-black/40 backdrop-blur md:right-5 ${toneConfig.className}`}
-      role="status"
-    >
-      <Icon className="mt-0.5 shrink-0" size={18} />
-      <span className="min-w-0 flex-1 break-words">{message}</span>
+    <div className={`fixed right-4 top-4 z-50 flex max-w-sm items-center gap-3 rounded border px-4 py-3 text-sm shadow-2xl shadow-black/40 ${toneConfig.className}`}>
+      <Icon size={18} />
+      <span className="flex-1">{message}</span>
       <button
         aria-label="Dismiss notification"
-        className="-mr-1 rounded p-1 text-current opacity-70 transition hover:bg-white/10 hover:opacity-100"
+        className="rounded p-1 text-current opacity-70 transition hover:bg-white/10 hover:opacity-100"
         onClick={onClose}
         type="button"
       >

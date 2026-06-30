@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import CodeEditor from "../components/editor/CodeEditor.jsx";
-import EditorPlaceholder from "../components/editor/EditorPlaceholder.jsx";
 import PresencePlaceholder from "../components/presence/PresencePlaceholder.jsx";
 import Toast from "../components/common/Toast.jsx";
 import StatePanel from "../components/common/StatePanel.jsx";
@@ -165,6 +164,7 @@ const RoomPage = () => {
       socket.off(SOCKET_EVENTS.ACTIVITY_UPDATED, handleActivityUpdated);
       socket.off(SOCKET_EVENTS.TYPING_UPDATED, handleTypingUpdated);
       socket.off(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
+      socket.off(SOCKET_EVENTS.PRESENCE_ERROR, handlePresenceError);
 
       if (socket.connected) {
         socket.emit(SOCKET_EVENTS.ROOM_LEAVE, {
@@ -173,8 +173,11 @@ const RoomPage = () => {
         });
         socket.disconnect();
       }
+
+      setIsSocketRoomReady(false);
+      setTypingUsers([]);
     };
-  }, [roomCode, sessionRoomCode, sessionUserId, status]);
+  }, [clearSession, navigate, roomCode, sessionRoomCode, sessionUserId, status]);
 
   if (status === "invalid") {
     return <Navigate replace to={ROUTES.HOME} />;
@@ -230,32 +233,48 @@ const RoomPage = () => {
   );
 
   return (
-    <main className="flex h-screen overflow-hidden bg-canvas text-body">
+    <main className="flex min-h-screen flex-col bg-canvas text-body">
       <Toast
         message={toast?.message}
         onClose={() => setToast(null)}
         tone={toast?.tone}
       />
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <RoomHeader onLeave={handleLeave} room={room} session={session} />
+      <RoomHeader onLeave={handleLeave} room={room} session={session} />
 
       <section className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <EditorPlaceholder document={room.document} />
+        {isEditorReady ? (
+          <CodeEditor
+            initialDocument={room.document}
+            initialVersion={room.documentVersion}
+            roomCode={room.roomCode}
+            userId={sessionUserId}
+            username={sessionUsername}
+          />
+        ) : (
+          <section className="grid min-h-[420px] flex-1 place-items-center bg-canvas p-6">
+            <StatePanel
+              description="Joining the realtime editor channel."
+              eyebrow="Editor"
+              icon={<Loader2 className="animate-spin" size={22} />}
+              title="Opening document"
+            />
+          </section>
+        )}
         <PresencePlaceholder
           activityLog={room.activityLog}
           participants={room.participants}
+          typingUsers={typingUsers}
         />
       </section>
 
-        <HostControls
-          onNotify={setToast}
-          onRoomClosed={handleRoomClosed}
-          onRoomUpdate={setRoom}
-          room={room}
-          session={session}
-        />
-      </div>
+      <HostControls
+        onNotify={setToast}
+        onRoomClosed={handleRoomClosed}
+        onRoomUpdate={setRoom}
+        room={room}
+        session={session}
+      />
     </main>
   );
 };

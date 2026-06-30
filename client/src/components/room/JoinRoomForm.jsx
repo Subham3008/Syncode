@@ -1,3 +1,4 @@
+import { LogIn } from "lucide-react";
 import Button from "../common/Button.jsx";
 import Input from "../common/Input.jsx";
 
@@ -13,19 +14,18 @@ const JoinRoomForm = ({
 }) => {
   return (
     <form
-      className="group relative overflow-hidden rounded-md border border-border bg-canvas/70 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:border-success/35 hover:bg-canvas/90"
+      className="rounded-md border border-border bg-surface p-5"
       onSubmit={onSubmit}
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-success/50 to-transparent opacity-0 transition group-hover:opacity-100" />
-      <div className="mb-5">
+      <div className="mb-5 flex items-center justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">
             Join
           </p>
           <h2 className="mt-1 text-lg font-semibold text-heading">Use room code</h2>
-          <p className="mt-1 text-xs leading-5 text-muted">
-            Enter a teammate's code and pick up live.
-          </p>
+        </div>
+        <div className="grid h-9 w-9 place-items-center rounded border border-border bg-elevated text-accent">
+          <LogIn size={18} />
         </div>
       </div>
 
@@ -37,7 +37,6 @@ const JoinRoomForm = ({
           maxLength={24}
           onChange={(event) => onUsernameChange(event.target.value)}
           placeholder="Rohit"
-          required
           value={username}
         />
         <Input
@@ -49,7 +48,6 @@ const JoinRoomForm = ({
           maxLength={6}
           onChange={(event) => onRoomCodeChange(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))}
           placeholder="AB12CD"
-          required
           value={roomCode}
         />
       </div>

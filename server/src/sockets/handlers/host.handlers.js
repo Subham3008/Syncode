@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { SOCKET_EVENTS } from "../../constants/socketEvents.js";
+import { toRoomDTO } from "../../modules/rooms/room.dto.js";
 import {
   closeRoom,
   kickParticipant,
@@ -13,9 +14,10 @@ import {
   hostRenameRoomSocketSchema
 } from "../../modules/rooms/room.validator.js";
 import {
-  broadcastRoomState,
-  notifyKickedParticipant
-} from "../room.broadcast.js";
+  getSocketIdByUser,
+  removeSocketFromRoom,
+  removeSocketUser
+} from "../socket.store.js";
 
 const getErrorMessage = (error) => {
   if (error instanceof ZodError) {
@@ -29,6 +31,17 @@ const emitHostError = (socket, error) => {
   socket.emit(SOCKET_EVENTS.ROOM_ERROR, {
     message: getErrorMessage(error)
   });
+};
+
+const broadcastRoomState = (io, room, eventName) => {
+  const roomDTO = toRoomDTO(room);
+
+  if (eventName) {
+    io.to(room.roomCode).emit(eventName, roomDTO);
+  }
+
+  io.to(room.roomCode).emit(SOCKET_EVENTS.PARTICIPANTS_UPDATED, roomDTO.participants);
+  io.to(room.roomCode).emit(SOCKET_EVENTS.ACTIVITY_UPDATED, roomDTO.activityLog);
 };
 
 export const registerHostHandlers = (io, socket) => {
@@ -46,8 +59,18 @@ export const registerHostHandlers = (io, socket) => {
     try {
       const data = hostKickUserSocketSchema.parse(payload);
       const { room, kickedParticipant } = await kickParticipant(data);
+      const targetSocketId = getSocketIdByUser(kickedParticipant.userId);
 
-      notifyKickedParticipant(io, room, kickedParticipant);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit(SOCKET_EVENTS.USER_KICKED, {
+          roomCode: room.roomCode,
+          message: "You were removed from the room by the host"
+        });
+        io.sockets.sockets.get(targetSocketId)?.leave(room.roomCode);
+        removeSocketFromRoom(room.roomCode, targetSocketId);
+        removeSocketUser(targetSocketId);
+      }
+
       broadcastRoomState(io, room);
     } catch (error) {
       emitHostError(socket, error);
