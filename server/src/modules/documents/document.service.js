@@ -1,5 +1,6 @@
 import { HTTP_STATUS } from "../../constants/httpStatus.js";
 import { ApiError } from "../../utils/ApiError.js";
+import { logger } from "../../utils/logger.js";
 import {
   getCharOwnership,
   getCachedDocument,
@@ -15,7 +16,7 @@ import {
 } from "./document.cache.js";
 import { resolveDeltaConflict } from "./conflict.service.js";
 import { applyDeltaToDocument, validateDelta } from "./delta.service.js";
-import { scheduleDocumentSave } from "./document.persistence.js";
+import { scheduleDocumentFlush } from "./document.persistence.js";
 import {
   normalizeCharOwnership,
   updateCharOwnership
@@ -60,6 +61,24 @@ const assertObject = (value, label) => {
   return value;
 };
 
+const normalizeClientDeltaId = (payload = {}) => {
+  if (typeof payload.clientDeltaId === "string" && payload.clientDeltaId.trim()) {
+    return payload.clientDeltaId.trim();
+  }
+
+  if (typeof payload.clientMutationId === "string" && payload.clientMutationId.trim()) {
+    return payload.clientMutationId.trim();
+  }
+
+  throw createPayloadError("clientDeltaId is required");
+};
+
+const normalizeTimestamp = (value) => {
+  const numericValue = Number(value);
+
+  return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : Date.now();
+};
+
 const normalizeVersion = (value, label) => {
   if (value === undefined || value === null || value === "") {
     throw createPayloadError(`${label} is required`);
@@ -92,7 +111,19 @@ const runRoomOperation = async (roomCode, operation) => {
   }
 };
 
-const toDeltaRecord = ({ delta, version, userId, username }) => ({
+const toDeltaRecord = ({
+  baseVersion,
+  clientDeltaId,
+  deletedText = "",
+  delta,
+  version,
+  userId,
+  username
+}) => ({
+  baseVersion,
+  clientDeltaId,
+  clientMutationId: clientDeltaId,
+  deletedText,
   version,
   userId,
   username,
@@ -112,14 +143,105 @@ const toClientDelta = (deltaRecord) => ({
   lineNumber: deltaRecord.lineNumber
 });
 
+const getRecentDeltaClientId = (deltaRecord = {}) => {
+  if (typeof deltaRecord.clientDeltaId === "string" && deltaRecord.clientDeltaId.trim()) {
+    return deltaRecord.clientDeltaId.trim();
+  }
+
+  if (typeof deltaRecord.clientMutationId === "string" && deltaRecord.clientMutationId.trim()) {
+    return deltaRecord.clientMutationId.trim();
+  }
+
+  return "";
+};
+
+const findRecentDeltaByClientId = (recentDeltas = [], clientDeltaId = "", userId = "") => {
+  if (!clientDeltaId) {
+    return null;
+  }
+
+  return recentDeltas.find((deltaRecord) =>
+    getRecentDeltaClientId(deltaRecord) === clientDeltaId
+    && (!userId || deltaRecord.userId === userId)
+  ) ?? null;
+};
+
+const toAppliedPayload = ({
+  charOwnership,
+  clientDeltaId,
+  clientSentAt,
+  deltaRecord,
+  duplicate = false,
+  lineOwnership,
+  redisAppliedAt = Date.now(),
+  redisApplyDurationMs = 0,
+  resolvedPayload,
+  roomCode,
+  serverReceivedAt,
+  userId,
+  username
+}) => ({
+  baseVersion: deltaRecord.baseVersion,
+  charOwnership,
+  clientDeltaId,
+  clientMutationId: clientDeltaId,
+  clientSentAt,
+  conflictResolved: Boolean(resolvedPayload?.conflictResolved),
+  deletedText: deltaRecord.deletedText || "",
+  delta: toClientDelta(deltaRecord),
+  duplicate,
+  length: deltaRecord.length,
+  lineNumber: deltaRecord.lineNumber,
+  lineOwnership,
+  operation: deltaRecord.type,
+  position: deltaRecord.position,
+  redisAppliedAt,
+  redisApplyDurationMs,
+  roomCode,
+  serverReceivedAt,
+  serverVersion: deltaRecord.version,
+  text: deltaRecord.text,
+  timestamp: deltaRecord.timestamp,
+  transformedBy: resolvedPayload?.transformedBy || 0,
+  userId,
+  username,
+  version: deltaRecord.version
+});
+
 const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
+  const startedAt = Date.now();
   const userId = assertString(payload.userId, "userId");
   const username = assertString(payload.username, "username");
   const color = typeof payload.color === "string" ? payload.color.trim() : "";
+  const clientDeltaId = normalizeClientDeltaId(payload);
+  const clientSentAt = normalizeTimestamp(payload.clientSentAt);
+  const serverReceivedAt = normalizeTimestamp(payload.serverReceivedAt);
   const baseVersion = normalizeVersion(payload.baseVersion, "baseVersion");
   const currentDocument = await getCachedDocument(normalizedRoomCode);
   const currentVersion = await getCachedVersion(normalizedRoomCode);
   const recentDeltas = await getRecentDeltas(normalizedRoomCode);
+  const duplicateDelta = findRecentDeltaByClientId(recentDeltas, clientDeltaId, userId);
+
+  if (duplicateDelta) {
+    const lineOwnership = await getLineOwnership(normalizedRoomCode);
+    const charOwnership = await getCharOwnership(normalizedRoomCode);
+
+    return toAppliedPayload({
+      charOwnership,
+      clientDeltaId,
+      clientSentAt,
+      deltaRecord: duplicateDelta,
+      duplicate: true,
+      lineOwnership,
+      redisAppliedAt: Date.now(),
+      redisApplyDurationMs: Date.now() - startedAt,
+      roomCode: normalizedRoomCode,
+      serverReceivedAt,
+      userId,
+      username
+    });
+  }
+
   const resolvedPayload = resolveDeltaConflict(
     {
       roomCode: normalizedRoomCode,
@@ -133,9 +255,15 @@ const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
     currentVersion
   );
   const acceptedDelta = validateDelta(resolvedPayload.delta, currentDocument);
+  const deletedText = acceptedDelta.type === "insert"
+    ? ""
+    : currentDocument.slice(acceptedDelta.position, acceptedDelta.position + acceptedDelta.length);
   const nextDocument = applyDeltaToDocument(currentDocument, acceptedDelta);
   const nextVersion = await incrementCachedVersion(normalizedRoomCode);
   const deltaRecord = toDeltaRecord({
+    baseVersion,
+    clientDeltaId,
+    deletedText,
     delta: acceptedDelta,
     version: nextVersion,
     userId,
@@ -165,24 +293,32 @@ const applyEditorDeltaForRoom = async (payload, normalizedRoomCode) => {
   await setLineOwnership(normalizedRoomCode, lineOwnership);
   await setCharOwnership(normalizedRoomCode, charOwnership);
   await markDocumentDirty(normalizedRoomCode);
-  scheduleDocumentSave(normalizedRoomCode);
+  const redisAppliedAt = Date.now();
 
-  return {
-    clientMutationId: typeof payload.clientMutationId === "string"
-      ? payload.clientMutationId
-      : "",
-    roomCode: normalizedRoomCode,
-    userId,
-    username,
-    version: nextVersion,
-    delta: toClientDelta(deltaRecord),
-    lineNumber: deltaRecord.lineNumber,
-    lineOwnership,
+  scheduleDocumentFlush(normalizedRoomCode).catch((error) => {
+    logger.error(
+      `[documents] Failed to schedule Mongo snapshot for room ${normalizedRoomCode}: ${error.message}`
+    );
+  });
+
+  logger.info(
+    `[editor-sync] Redis applied clientDeltaId=${clientDeltaId} room=${normalizedRoomCode} version=${nextVersion} durationMs=${redisAppliedAt - startedAt}`
+  );
+
+  return toAppliedPayload({
     charOwnership,
-    conflictResolved: resolvedPayload.conflictResolved,
-    transformedBy: resolvedPayload.transformedBy,
-    timestamp: deltaRecord.timestamp
-  };
+    clientDeltaId,
+    clientSentAt,
+    deltaRecord,
+    lineOwnership,
+    redisAppliedAt,
+    redisApplyDurationMs: redisAppliedAt - startedAt,
+    resolvedPayload,
+    roomCode: normalizedRoomCode,
+    serverReceivedAt,
+    userId,
+    username
+  });
 };
 
 export const getDocumentState = async (roomCode) => {

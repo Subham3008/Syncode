@@ -6,6 +6,7 @@ import {
 } from "../../constants/roomConstants.js";
 import { Room } from "../../models/room.model.js";
 import { assertCanKick, assertIsHost } from "../host/host.service.js";
+import { flushDocumentToMongo } from "../documents/document.persistence.js";
 import { ApiError } from "../../utils/ApiError.js";
 import { generateRoomCode } from "../../utils/generateRoomCode.js";
 
@@ -162,40 +163,14 @@ export const rejoinRoom = async ({ roomCode, userId }) => {
     await room.save();
   }
 
-  const lastSeen = now();
-  const participantUpdates = {
-    "participants.$.isOnline": true,
-    "participants.$.lastSeen": lastSeen
-  };
+  participant.isOnline = true;
+  participant.lastSeen = now();
 
   if (isHostRejoin) {
-    participantUpdates["participants.$.isHost"] = true;
+    participant.isHost = true;
   }
 
-  const updateResult = await Room.updateOne(
-    {
-      roomCode: normalizedRoomCode,
-      "participants.userId": normalizedUserId
-    },
-    {
-      $set: participantUpdates
-    }
-  );
-
-  if (!updateResult.matchedCount) {
-    throw new ApiError(HTTP_STATUS.NOT_FOUND, "Participant not found in this room");
-  }
-
-  const updatedRoom = await Room.findOne({ roomCode: normalizedRoomCode });
-  const updatedParticipant = updatedRoom?.participants.find(
-    (item) => item.userId === normalizedUserId
-  );
-
-  if (!updatedRoom || !updatedParticipant) {
-    throw new ApiError(HTTP_STATUS.NOT_FOUND, "Participant not found in this room");
-  }
-
-  return { room: updatedRoom, sessionUser: updatedParticipant };
+  return { room, sessionUser: participant };
 };
 
 export const getRoomByCode = async (roomCode) => {
@@ -269,6 +244,7 @@ export const closeRoom = async ({ roomCode, userId }) => {
   });
 
   await room.save();
+  await flushDocumentToMongo(room.roomCode);
   return room;
 };
 
@@ -286,7 +262,6 @@ export const markParticipantOnline = async ({ roomCode, userId, socketId }) => {
   participant.isOnline = true;
   participant.lastSeen = now();
 
-  await room.save();
   return { room, participant };
 };
 
@@ -302,21 +277,10 @@ export const markParticipantOffline = async ({ roomCode, userId, socketId = null
     return { room, participant, isStaleSocket: true };
   }
 
-  if (!participant.isOnline && !participant.socketId) {
-    return { room, participant, wasAlreadyOffline: true };
-  }
-
   participant.socketId = null;
   participant.isOnline = false;
   participant.lastSeen = now();
-  addActivity(room, {
-    type: "user_left",
-    userId,
-    username: participant.username,
-    message: `${participant.username} left the room`
-  });
 
-  await room.save();
   return { room, participant };
 };
 
@@ -337,5 +301,8 @@ export const removeParticipantFromRoom = async ({ roomCode, userId }) => {
   });
 
   await room.save();
+  if (room.participants.length === 0) {
+    await flushDocumentToMongo(room.roomCode);
+  }
   return { room, participant };
 };

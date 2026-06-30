@@ -18,11 +18,13 @@ import {
   removePresenceParticipant,
   upsertPresenceParticipant
 } from "../../modules/presence/presence.service.js";
+import { flushDocumentToMongo } from "../../modules/documents/document.persistence.js";
 import {
   addSocketToRoom,
   addSocketUser,
   clearSocketFromAllMaps,
   getSocketIdByUser,
+  getRoomSockets,
   getUserBySocket,
   removeSocketFromRoom
 } from "../socket.store.js";
@@ -91,6 +93,10 @@ const scheduleParticipantOffline = ({ io, roomCode, userId, socketId }) => {
           username: result.participant.username
         });
         emitRoomState(io, result.room);
+      }
+
+      if (roomCode && getRoomSockets(roomCode).size === 0) {
+        await flushDocumentToMongo(roomCode);
       }
     } catch {
       // The room may have been closed or the participant removed while the grace timer was pending.
@@ -196,6 +202,10 @@ const leaveSocketRoom = async ({ io, socket, roomCode, userId }) => {
   }
 
   removeSocketFromRoom(userData.roomCode, socket.id);
+
+  if (userData.roomCode && getRoomSockets(userData.roomCode).size === 0) {
+    await flushDocumentToMongo(userData.roomCode);
+  }
 };
 
 export const registerRoomHandlers = (io, socket) => {

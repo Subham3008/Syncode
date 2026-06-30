@@ -1,7 +1,10 @@
 import { toParticipantDTO } from "../rooms/room.dto.js";
 import { SOCKET_EVENTS } from "../../constants/socketEvents.js";
+import { redisClient } from "../../config/redis.js";
+import { logger } from "../../utils/logger.js";
 
 const TYPING_TTL_MS = 2500;
+const PARTICIPANTS_TTL_SECONDS = 30 * 60;
 
 const roomPresenceMap = new Map();
 const socketPresenceMap = new Map();
@@ -9,6 +12,18 @@ const typingTimers = new Map();
 
 const normalizeRoomCode = (roomCode) =>
   typeof roomCode === "string" ? roomCode.trim().toUpperCase() : "";
+
+const getPresenceParticipantsKey = (roomCode) =>
+  `room:${normalizeRoomCode(roomCode)}:participants`;
+
+const getTypingKey = (roomCode, participantId) =>
+  `room:${normalizeRoomCode(roomCode)}:typing:${participantId}`;
+
+const writeRedisPresence = (operation) => {
+  operation().catch((error) => {
+    logger.warn(`Redis presence update failed: ${error.message}`);
+  });
+};
 
 const normalizeName = (name) => {
   const cleanName = typeof name === "string" ? name.trim().replace(/\s+/g, " ") : "";
@@ -134,6 +149,14 @@ export const upsertPresenceParticipant = ({ io, room, participant, socketId }) =
 
   roomPresence.set(participantId, presenceParticipant);
   socketPresenceMap.set(socketId, { roomCode, participantId });
+  writeRedisPresence(async () => {
+    await redisClient.hSet(
+      getPresenceParticipantsKey(roomCode),
+      participantId,
+      JSON.stringify(presenceParticipant)
+    );
+    await redisClient.expire(getPresenceParticipantsKey(roomCode), PARTICIPANTS_TTL_SECONDS);
+  });
 
   io.to(roomCode).emit(SOCKET_EVENTS.PRESENCE_JOIN, {
     roomCode,
@@ -158,6 +181,10 @@ export const removePresenceParticipant = ({
 
   if (normalizedRoomCode && participantId) {
     roomPresenceMap.get(normalizedRoomCode)?.delete(participantId);
+    writeRedisPresence(async () => {
+      await redisClient.hDel(getPresenceParticipantsKey(normalizedRoomCode), participantId);
+      await redisClient.del(getTypingKey(normalizedRoomCode, participantId));
+    });
     io.to(normalizedRoomCode).emit(SOCKET_EVENTS.PRESENCE_LEAVE, {
       roomCode: normalizedRoomCode,
       participantId,
@@ -180,6 +207,9 @@ export const removeRoomPresence = ({ io, roomCode }) => {
     socketPresenceMap.delete(participant.socketId);
   });
   roomPresenceMap.delete(normalizedRoomCode);
+  writeRedisPresence(async () => {
+    await redisClient.del(getPresenceParticipantsKey(normalizedRoomCode));
+  });
   emitPresenceList(io, normalizedRoomCode, []);
 };
 
@@ -206,6 +236,19 @@ export const updateTypingPresence = ({ io, roomCode, socketId, isTyping, cursorP
   participant.lastSeen = new Date();
 
   if (participant.isTyping) {
+    writeRedisPresence(async () => {
+      await redisClient.set(
+        getTypingKey(normalizedRoomCode, participant.userId),
+        JSON.stringify({
+          cursorPosition: participant.cursorPosition,
+          isTyping: true,
+          userId: participant.userId,
+          updatedAt: Date.now()
+        }),
+        { PX: TYPING_TTL_MS }
+      );
+    });
+
     const timer = setTimeout(() => {
       updateTypingPresence({
         io,
@@ -217,6 +260,10 @@ export const updateTypingPresence = ({ io, roomCode, socketId, isTyping, cursorP
 
     timer.unref?.();
     typingTimers.set(socketId, timer);
+  } else {
+    writeRedisPresence(async () => {
+      await redisClient.del(getTypingKey(normalizedRoomCode, participant.userId));
+    });
   }
 
   io.to(normalizedRoomCode).emit(SOCKET_EVENTS.PRESENCE_UPDATE, {

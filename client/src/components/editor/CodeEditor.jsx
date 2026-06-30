@@ -69,6 +69,8 @@ const CodeEditor = ({
     isSynced,
     lineOwnership,
     requestEditorState,
+    syncMessage,
+    syncStatus,
     version
   } = useDocumentSync({
     roomCode,
@@ -231,6 +233,8 @@ const CodeEditor = ({
         isSaving={isSaving}
         isSynced={isSynced}
         lineCount={lineCount}
+        syncMessage={syncMessage}
+        syncStatus={syncStatus}
         version={version}
       />
     </section>

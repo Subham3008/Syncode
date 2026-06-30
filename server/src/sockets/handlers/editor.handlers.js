@@ -5,6 +5,7 @@ import {
   getDocumentState
 } from "../../modules/documents/document.service.js";
 import { ApiError } from "../../utils/ApiError.js";
+import { logger } from "../../utils/logger.js";
 import { getUserBySocket } from "../socket.store.js";
 
 const normalizeRoomCode = (roomCode) => {
@@ -67,13 +68,19 @@ export const registerEditorHandlers = (io, socket) => {
       });
       const documentState = await getDocumentState(roomCode);
 
-      socket.emit(SOCKET_EVENTS.EDITOR_STATE, documentState);
+      socket.emit(SOCKET_EVENTS.EDITOR_STATE, {
+        ...documentState,
+        requestId: typeof safePayload.requestId === "string" ? safePayload.requestId : "",
+        reason: typeof safePayload.reason === "string" ? safePayload.reason : ""
+      });
     } catch (error) {
       emitEditorError(socket, error);
     }
   });
 
   socket.on(SOCKET_EVENTS.EDITOR_DELTA, async (payload = {}, acknowledge) => {
+    const serverReceivedAt = Date.now();
+
     try {
       const safePayload = normalizePayload(payload);
       const sessionUser = assertSocketCanAccessRoom({
@@ -86,15 +93,24 @@ export const registerEditorHandlers = (io, socket) => {
         roomCode: sessionUser.roomCode,
         userId: sessionUser.userId,
         username: safePayload.username || sessionUser.username,
-        color: sessionUser.color
+        color: sessionUser.color,
+        serverReceivedAt
       });
+      const serverBroadcastAt = Date.now();
+      const appliedDelta = {
+        ...acceptedDelta,
+        serverBroadcastAt
+      };
 
-      socket.to(sessionUser.roomCode).emit(SOCKET_EVENTS.EDITOR_DELTA_APPLIED, acceptedDelta);
+      logger.info(
+        `[editor-sync] Broadcast clientDeltaId=${appliedDelta.clientDeltaId} room=${sessionUser.roomCode} recv=${serverReceivedAt} redis=${appliedDelta.redisAppliedAt} broadcast=${serverBroadcastAt}`
+      );
+      io.to(sessionUser.roomCode).emit(SOCKET_EVENTS.EDITOR_DELTA_APPLIED, appliedDelta);
 
       if (typeof acknowledge === "function") {
         acknowledge({
           success: true,
-          data: acceptedDelta
+          data: appliedDelta
         });
       }
     } catch (error) {

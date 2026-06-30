@@ -1,20 +1,20 @@
 import { HTTP_STATUS } from "../../constants/httpStatus.js";
-import { MAX_RECENT_DELTAS } from "../../constants/roomConstants.js";
 import { Room } from "../../models/room.model.js";
 import { ApiError } from "../../utils/ApiError.js";
+import { logger } from "../../utils/logger.js";
 import {
   clearDocumentDirty,
-  getCharOwnership,
   getCachedDocument,
   getCachedVersion,
-  getLineOwnership,
-  getRecentDeltas
+  getDirtyDeltaCount
 } from "./document.cache.js";
 
 const SAVE_DELAY_MS = 3000;
+const DELTA_FLUSH_THRESHOLD = 40;
 
 const saveTimers = new Map();
 const activeFlushes = new Map();
+let mongoFlushWriteCount = 0;
 
 const normalizeRoomCode = (roomCode) => {
   if (typeof roomCode !== "string") {
@@ -44,22 +44,22 @@ const clearScheduledSave = (roomCode) => {
 };
 
 const persistRoomDocument = async (roomCode) => {
+  const startedAt = Date.now();
   const document = await getCachedDocument(roomCode);
   const version = await getCachedVersion(roomCode);
-  const recentDeltas = await getRecentDeltas(roomCode);
-  const lineOwnership = await getLineOwnership(roomCode);
-  const charOwnership = await getCharOwnership(roomCode);
-  const persistedRecentDeltas = recentDeltas.slice(-MAX_RECENT_DELTAS);
   const updateResult = await Room.updateOne(
     { roomCode },
     {
       $set: {
         document,
         documentVersion: version,
-        recentDeltas: persistedRecentDeltas,
-        lineOwnership,
-        charOwnership,
+        lastPersistedAt: new Date(),
         updatedAt: new Date()
+      },
+      $unset: {
+        recentDeltas: "",
+        lineOwnership: "",
+        charOwnership: ""
       }
     }
   );
@@ -74,17 +74,23 @@ const persistRoomDocument = async (roomCode) => {
   if (isFullyPersisted) {
     await clearDocumentDirty(roomCode);
   } else {
-    scheduleDocumentSave(roomCode);
+    scheduleDocumentFlush(roomCode).catch((error) => {
+      logger.error(
+        `[documents] Failed to reschedule Mongo snapshot for room ${roomCode}: ${error.message}`
+      );
+    });
   }
+
+  mongoFlushWriteCount += 1;
+  logger.info(
+    `[documents] Mongo snapshot flushed room=${roomCode} version=${version} durationMs=${Date.now() - startedAt} writes=${mongoFlushWriteCount}`
+  );
 
   return {
     roomCode,
     document,
     version,
     latestVersion,
-    recentDeltas: persistedRecentDeltas,
-    lineOwnership,
-    charOwnership,
     isFullyPersisted
   };
 };
@@ -110,8 +116,17 @@ export const flushDocumentToMongo = async (roomCode) => {
   return flushPromise;
 };
 
-export const scheduleDocumentSave = (roomCode) => {
+export const scheduleDocumentFlush = async (roomCode, options = {}) => {
   const normalizedRoomCode = assertRoomCode(roomCode);
+  const delayMs = options.immediate ? 0 : SAVE_DELAY_MS;
+
+  if (!options.immediate) {
+    const dirtyDeltaCount = await getDirtyDeltaCount(normalizedRoomCode);
+
+    if (dirtyDeltaCount >= DELTA_FLUSH_THRESHOLD) {
+      return scheduleDocumentFlush(normalizedRoomCode, { immediate: true });
+    }
+  }
 
   clearScheduledSave(normalizedRoomCode);
 
@@ -124,9 +139,19 @@ export const scheduleDocumentSave = (roomCode) => {
       console.error(
         `[documents] Failed to flush room ${normalizedRoomCode} to MongoDB: ${error.message}`
       );
+      scheduleDocumentFlush(normalizedRoomCode).catch((scheduleError) => {
+        console.error(
+          `[documents] Failed to reschedule MongoDB flush for ${normalizedRoomCode}: ${scheduleError.message}`
+        );
+      });
     }
-  }, SAVE_DELAY_MS);
+  }, delayMs);
 
   timer.unref?.();
   saveTimers.set(normalizedRoomCode, timer);
+  logger.info(
+    `[documents] Mongo snapshot scheduled room=${normalizedRoomCode} delayMs=${delayMs} at=${Date.now()}`
+  );
 };
+
+export const scheduleDocumentSave = scheduleDocumentFlush;

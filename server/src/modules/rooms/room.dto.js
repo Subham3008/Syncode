@@ -28,6 +28,7 @@ export const toRoomDTO = (room) => ({
   isLocked: room.isLocked,
   isActive: room.isActive,
   createdAt: room.createdAt,
+  lastPersistedAt: room.lastPersistedAt,
   updatedAt: room.updatedAt
 });
 

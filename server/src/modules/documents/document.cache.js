@@ -4,6 +4,7 @@ import { Room } from "../../models/room.model.js";
 import { ApiError } from "../../utils/ApiError.js";
 
 const RECENT_DELTAS_LIMIT = 50;
+const RECENT_DELTAS_TTL_SECONDS = 20 * 60;
 
 const normalizeRoomCode = (roomCode) => {
   if (typeof roomCode !== "string") {
@@ -69,11 +70,14 @@ export const getRecentDeltasKey = (roomCode) => `room:${assertRoomCode(roomCode)
 export const getLineOwnershipKey = (roomCode) => `room:${assertRoomCode(roomCode)}:lineOwnership`;
 export const getCharOwnershipKey = (roomCode) => `room:${assertRoomCode(roomCode)}:charOwnership`;
 export const getDirtyKey = (roomCode) => `room:${assertRoomCode(roomCode)}:dirty`;
+export const getDirtyDeltaCountKey = (roomCode) =>
+  `room:${assertRoomCode(roomCode)}:dirtyDeltaCount`;
+export const getDirtySinceKey = (roomCode) => `room:${assertRoomCode(roomCode)}:dirtySince`;
 
 export const hydrateDocumentCache = async (roomCode) => {
   const normalizedRoomCode = assertRoomCode(roomCode);
   const room = await Room.findOne({ roomCode: normalizedRoomCode })
-    .select("document documentVersion recentDeltas lineOwnership charOwnership")
+    .select("document documentVersion")
     .lean();
 
   if (!room) {
@@ -82,11 +86,9 @@ export const hydrateDocumentCache = async (roomCode) => {
 
   const document = typeof room.document === "string" ? room.document : "";
   const version = parseVersion(room.documentVersion);
-  const recentDeltas = Array.isArray(room.recentDeltas)
-    ? room.recentDeltas.slice(-RECENT_DELTAS_LIMIT)
-    : [];
-  const lineOwnership = normalizeLineOwnership(room.lineOwnership);
-  const charOwnership = normalizeCharOwnership(room.charOwnership, document);
+  const recentDeltas = [];
+  const lineOwnership = {};
+  const charOwnership = normalizeCharOwnership([], document);
 
   const multi = redisClient.multi();
   multi.set(getDocumentKey(normalizedRoomCode), document);
@@ -94,6 +96,8 @@ export const hydrateDocumentCache = async (roomCode) => {
   multi.set(getLineOwnershipKey(normalizedRoomCode), JSON.stringify(lineOwnership));
   multi.set(getCharOwnershipKey(normalizedRoomCode), JSON.stringify(charOwnership));
   multi.del(getRecentDeltasKey(normalizedRoomCode));
+  multi.del(getDirtyDeltaCountKey(normalizedRoomCode));
+  multi.del(getDirtySinceKey(normalizedRoomCode));
 
   for (const delta of recentDeltas) {
     multi.rPush(getRecentDeltasKey(normalizedRoomCode), JSON.stringify(delta));
@@ -166,6 +170,7 @@ export const pushRecentDelta = async (roomCode, delta) => {
   const multi = redisClient.multi();
   multi.rPush(recentDeltasKey, serializedDelta);
   multi.lTrim(recentDeltasKey, -RECENT_DELTAS_LIMIT, -1);
+  multi.expire(recentDeltasKey, RECENT_DELTAS_TTL_SECONDS);
   await multi.exec();
 
   return safeDelta;
@@ -208,12 +213,34 @@ export const setCharOwnership = async (roomCode, charOwnership) => {
 };
 
 export const markDocumentDirty = async (roomCode) => {
-  await redisClient.set(getDirtyKey(roomCode), "1");
-  return true;
+  const normalizedRoomCode = assertRoomCode(roomCode);
+  const dirtyKey = getDirtyKey(normalizedRoomCode);
+  const dirtyDeltaCountKey = getDirtyDeltaCountKey(normalizedRoomCode);
+  const dirtySinceKey = getDirtySinceKey(normalizedRoomCode);
+  const now = Date.now();
+  const multi = redisClient.multi();
+
+  multi.set(dirtyKey, "1");
+  multi.incr(dirtyDeltaCountKey);
+  multi.set(dirtySinceKey, String(now), { NX: true });
+
+  const results = await multi.exec();
+  const dirtyDeltaCountResult = results?.[1];
+  const dirtyDeltaCount = Array.isArray(dirtyDeltaCountResult)
+    ? dirtyDeltaCountResult[1]
+    : dirtyDeltaCountResult;
+
+  return Number(dirtyDeltaCount) || 1;
 };
 
 export const clearDocumentDirty = async (roomCode) => {
-  await redisClient.del(getDirtyKey(roomCode));
+  const normalizedRoomCode = assertRoomCode(roomCode);
+
+  await redisClient.del([
+    getDirtyKey(normalizedRoomCode),
+    getDirtyDeltaCountKey(normalizedRoomCode),
+    getDirtySinceKey(normalizedRoomCode)
+  ]);
   return false;
 };
 
@@ -221,4 +248,11 @@ export const isDocumentDirty = async (roomCode) => {
   const dirty = await redisClient.get(getDirtyKey(roomCode));
 
   return dirty === "1";
+};
+
+export const getDirtyDeltaCount = async (roomCode) => {
+  const dirtyDeltaCount = await redisClient.get(getDirtyDeltaCountKey(roomCode));
+  const numericCount = Number(dirtyDeltaCount);
+
+  return Number.isInteger(numericCount) && numericCount > 0 ? numericCount : 0;
 };

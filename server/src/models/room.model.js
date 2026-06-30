@@ -1,8 +1,7 @@
 import mongoose from "mongoose";
 import {
   DEFAULT_ROOM_NAME,
-  MAX_ACTIVITY_LOG_ITEMS,
-  MAX_RECENT_DELTAS
+  MAX_ACTIVITY_LOG_ITEMS
 } from "../constants/roomConstants.js";
 
 const participantSchema = new mongoose.Schema(
@@ -15,31 +14,6 @@ const participantSchema = new mongoose.Schema(
     isHost: { type: Boolean, default: false },
     joinedAt: { type: Date, default: Date.now },
     lastSeen: { type: Date, default: Date.now }
-  },
-  { _id: false }
-);
-
-const deltaSchema = new mongoose.Schema(
-  {
-    version: { type: Number, required: true },
-    userId: { type: String, required: true, trim: true },
-    username: { type: String, required: true, trim: true },
-    type: { type: String, enum: ["insert", "delete", "replace"], required: true },
-    position: { type: Number, required: true },
-    text: { type: String, default: "" },
-    length: { type: Number, default: 0 },
-    lineNumber: { type: Number, default: 1 },
-    timestamp: { type: Date, default: Date.now }
-  },
-  { _id: false }
-);
-
-const lineOwnershipEntrySchema = new mongoose.Schema(
-  {
-    userId: { type: String, required: true, trim: true },
-    username: { type: String, required: true, trim: true },
-    color: { type: String, default: "", trim: true },
-    updatedAt: { type: Date, default: Date.now }
   },
   { _id: false }
 );
@@ -78,12 +52,10 @@ const roomSchema = new mongoose.Schema(
     document: { type: String, default: "" },
     documentVersion: { type: Number, default: 0 },
     participants: { type: [participantSchema], default: [] },
-    recentDeltas: { type: [deltaSchema], default: [] },
-    lineOwnership: { type: Map, of: lineOwnershipEntrySchema, default: {} },
-    charOwnership: { type: [mongoose.Schema.Types.Mixed], default: [] },
     activityLog: { type: [activityLogSchema], default: [] },
     isLocked: { type: Boolean, default: false },
-    isActive: { type: Boolean, default: true, index: true }
+    isActive: { type: Boolean, default: true, index: true },
+    lastPersistedAt: { type: Date, default: null }
   },
   { timestamps: true }
 );
@@ -94,10 +66,6 @@ roomSchema.index({ "participants.userId": 1 });
 roomSchema.pre("save", function trimRollingRoomArrays(next) {
   if (this.activityLog.length > MAX_ACTIVITY_LOG_ITEMS) {
     this.activityLog = this.activityLog.slice(-MAX_ACTIVITY_LOG_ITEMS);
-  }
-
-  if (this.recentDeltas.length > MAX_RECENT_DELTAS) {
-    this.recentDeltas = this.recentDeltas.slice(-MAX_RECENT_DELTAS);
   }
 
   next();
