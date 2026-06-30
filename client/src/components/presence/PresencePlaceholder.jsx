@@ -1,4 +1,18 @@
-import { Activity, Circle, Crown, UsersRound } from "lucide-react";
+import {
+  Activity,
+  Circle,
+  Crown,
+  LogOut,
+  LockKeyhole,
+  LockOpen,
+  Pencil,
+  RotateCcw,
+  Sparkles,
+  UserMinus,
+  UserPlus,
+  UsersRound,
+  XCircle
+} from "lucide-react";
 
 const getTypingLabel = (typingUsers = []) => {
   if (typingUsers.length === 0) {
@@ -16,15 +30,93 @@ const getTypingLabel = (typingUsers = []) => {
   return `${typingUsers[0].username} and ${typingUsers.length - 1} others are typing`;
 };
 
+const activityStyles = {
+  room_created: {
+    accent: "#58a6ff",
+    Icon: Sparkles,
+    label: "Created",
+    surface: "rgba(88, 166, 255, 0.08)"
+  },
+  user_joined: {
+    accent: "#34d399",
+    Icon: UserPlus,
+    label: "Joined",
+    surface: "rgba(52, 211, 153, 0.08)"
+  },
+  user_rejoined: {
+    accent: "#22d3ee",
+    Icon: RotateCcw,
+    label: "Rejoined",
+    surface: "rgba(34, 211, 238, 0.08)"
+  },
+  user_left: {
+    accent: "#f59e0b",
+    Icon: LogOut,
+    label: "Left",
+    surface: "rgba(245, 158, 11, 0.08)"
+  },
+  room_renamed: {
+    accent: "#a78bfa",
+    Icon: Pencil,
+    label: "Renamed",
+    surface: "rgba(167, 139, 250, 0.08)"
+  },
+  user_kicked: {
+    accent: "#fb7185",
+    Icon: UserMinus,
+    label: "Removed",
+    surface: "rgba(251, 113, 133, 0.08)"
+  },
+  room_locked: {
+    accent: "#f97316",
+    Icon: LockKeyhole,
+    label: "Locked",
+    surface: "rgba(249, 115, 22, 0.08)"
+  },
+  room_unlocked: {
+    accent: "#84cc16",
+    Icon: LockOpen,
+    label: "Unlocked",
+    surface: "rgba(132, 204, 22, 0.08)"
+  },
+  room_closed: {
+    accent: "#f87171",
+    Icon: XCircle,
+    label: "Closed",
+    surface: "rgba(248, 113, 113, 0.08)"
+  }
+};
+
+const fallbackActivityStyle = {
+  accent: "#58a6ff",
+  Icon: Activity,
+  label: "Update",
+  surface: "rgba(88, 166, 255, 0.08)"
+};
+
+const formatActivityTime = (timestamp) => {
+  const date = new Date(timestamp);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+};
+
 const PresencePlaceholder = ({
   participants = [],
   activityLog = [],
   typingUsers = []
 }) => {
   const typingLabel = getTypingLabel(typingUsers);
+  const orderedActivity = [...activityLog].reverse();
 
   return (
-    <aside className="flex w-full flex-col border-border bg-[#111820] md:w-[300px] md:border-l">
+    <aside className="flex min-h-0 w-full flex-col border-border bg-[#111820] md:w-[300px] md:border-l">
       <section className="border-b border-border p-4">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
@@ -90,25 +182,75 @@ const PresencePlaceholder = ({
         </div>
       </section>
 
-      <section className="min-h-0 flex-1 overflow-y-auto p-4">
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
         <div className="mb-4 flex items-center gap-2">
           <Activity size={15} className="text-accent" />
           <h2 className="text-xs font-semibold uppercase tracking-[0.08em] text-muted">
             Activity
           </h2>
+          {activityLog.length ? (
+            <span className="ml-auto rounded border border-border bg-[#0b1017] px-2 py-1 font-mono text-[11px] text-muted">
+              {activityLog.length}
+            </span>
+          ) : null}
         </div>
-        <div className="space-y-3">
-          {activityLog.slice(-8).reverse().map((activity, index) => (
-            <div className="border-l border-[#3b4654] pl-3" key={`${activity.timestamp}-${index}`}>
-              <p className="text-sm leading-5 text-body">{activity.message}</p>
-              <p className="mt-1 font-mono text-[11px] text-muted">
-                {new Date(activity.timestamp).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit"
-                })}
-              </p>
-            </div>
-          ))}
+        <div
+          className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1"
+          style={{ scrollbarGutter: "stable" }}
+        >
+          {orderedActivity.map((activity, index) => {
+            const meta = activityStyles[activity.type] ?? fallbackActivityStyle;
+            const Icon = meta.Icon;
+            const time = formatActivityTime(activity.timestamp);
+
+            return (
+              <article
+                className="group relative overflow-hidden rounded border border-[#27313d] bg-[#0b1017] p-3 transition hover:border-[#3d4b5c]"
+                key={`${activity.timestamp}-${activity.type}-${index}`}
+                style={{
+                  background: `linear-gradient(135deg, ${meta.surface}, rgba(11, 16, 23, 0.96) 46%)`
+                }}
+              >
+                <span
+                  className="absolute inset-y-0 left-0 w-1"
+                  style={{ backgroundColor: meta.accent }}
+                />
+                <div className="flex gap-3 pl-1">
+                  <span
+                    className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded border"
+                    style={{
+                      backgroundColor: meta.surface,
+                      borderColor: `${meta.accent}66`,
+                      color: meta.accent
+                    }}
+                  >
+                    <Icon size={15} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex items-center gap-2">
+                      <span
+                        className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
+                        style={{
+                          backgroundColor: meta.surface,
+                          color: meta.accent
+                        }}
+                      >
+                        {meta.label}
+                      </span>
+                      {time ? (
+                        <time className="font-mono text-[11px] text-muted" dateTime={activity.timestamp}>
+                          {time}
+                        </time>
+                      ) : null}
+                    </div>
+                    <p className="break-words text-sm leading-5 text-body">
+                      {activity.message}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
           {activityLog.length === 0 ? (
             <p className="rounded border border-border bg-[#0b1017] px-3 py-3 text-sm text-muted">
               No room activity yet.
