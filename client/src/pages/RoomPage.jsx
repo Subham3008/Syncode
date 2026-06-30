@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
-import EditorPlaceholder from "../components/editor/EditorPlaceholder.jsx";
+import CodeEditor from "../components/editor/CodeEditor.jsx";
 import PresencePlaceholder from "../components/presence/PresencePlaceholder.jsx";
 import Toast from "../components/common/Toast.jsx";
 import StatePanel from "../components/common/StatePanel.jsx";
@@ -21,8 +21,10 @@ const RoomPage = () => {
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
+  const [isSocketRoomReady, setIsSocketRoomReady] = useState(false);
   const sessionRoomCode = session?.roomCode;
   const sessionUserId = session?.userId;
+  const sessionUsername = session?.username;
 
   const redirectHomeSoon = () => {
     window.setTimeout(() => {
@@ -67,6 +69,8 @@ const RoomPage = () => {
       return undefined;
     }
 
+    setIsSocketRoomReady(false);
+
     const rejoinSocketRoom = () => {
       socket.emit(SOCKET_EVENTS.ROOM_REJOIN, {
         roomCode: sessionRoomCode,
@@ -82,6 +86,7 @@ const RoomPage = () => {
           ...currentRoom,
           ...nextRoom
         }));
+        setIsSocketRoomReady(true);
       }
     };
 
@@ -148,6 +153,8 @@ const RoomPage = () => {
         });
         socket.disconnect();
       }
+
+      setIsSocketRoomReady(false);
     };
   }, [clearSession, navigate, roomCode, sessionRoomCode, sessionUserId, status]);
 
@@ -185,6 +192,25 @@ const RoomPage = () => {
     );
   }
 
+  if (!room || !session) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-canvas px-4 text-body">
+        <StatePanel
+          description="Room data is not available for this session."
+          eyebrow="Room session"
+          icon={<Loader2 className="animate-spin" size={22} />}
+          title="Preparing workspace"
+        />
+      </main>
+    );
+  }
+
+  const isEditorReady = Boolean(
+    isSocketRoomReady
+    && room.roomCode
+    && sessionUserId
+  );
+
   return (
     <main className="flex min-h-screen flex-col bg-canvas text-body">
       <Toast
@@ -196,7 +222,24 @@ const RoomPage = () => {
       <RoomHeader onLeave={handleLeave} room={room} session={session} />
 
       <section className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <EditorPlaceholder document={room.document} />
+        {isEditorReady ? (
+          <CodeEditor
+            initialDocument={room.document}
+            initialVersion={room.documentVersion}
+            roomCode={room.roomCode}
+            userId={sessionUserId}
+            username={sessionUsername}
+          />
+        ) : (
+          <section className="grid min-h-[420px] flex-1 place-items-center bg-canvas p-6">
+            <StatePanel
+              description="Joining the realtime editor channel."
+              eyebrow="Editor"
+              icon={<Loader2 className="animate-spin" size={22} />}
+              title="Opening document"
+            />
+          </section>
+        )}
         <PresencePlaceholder
           activityLog={room.activityLog}
           participants={room.participants}
