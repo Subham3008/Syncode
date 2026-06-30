@@ -42,13 +42,18 @@ export const connectRedis = async () => {
     logger.info(`Redis connected: ${getSafeRedisUrl()}`);
     return redisClient;
   } catch (error) {
-    const message = `Redis connection failed for document sync cache: ${error.message}`;
-    logger.error(message);
-    throw new Error(`${message}. Start Redis locally or set REDIS_URL, or set REDIS_HOST, REDIS_PORT, and REDIS_PASSWORD.`);
+    logger.warn(
+      `Redis unavailable; using in-memory document cache and local Socket.IO adapter: ${error.message}`
+    );
+    return null;
   }
 };
 
 export const connectRedisSubscriber = async () => {
+  if (!redisClient.isOpen) {
+    return null;
+  }
+
   if (redisSubscriber.isOpen) {
     return redisSubscriber;
   }
@@ -56,6 +61,8 @@ export const connectRedisSubscriber = async () => {
   await redisSubscriber.connect();
   return redisSubscriber;
 };
+
+export const hasRedisConnection = () => Boolean(redisClient.isReady);
 
 export const disconnectRedis = async () => {
   if (redisSubscriber.isOpen) {

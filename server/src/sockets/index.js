@@ -16,9 +16,14 @@ export const initializeSocketServer = async (httpServer) => {
     transports: ["websocket", "polling"]
   });
 
-  await connectRedisSubscriber();
-  io.adapter(createAdapter(redisClient, redisSubscriber));
-  logger.info("Socket.IO Redis adapter connected");
+  const subscriber = await connectRedisSubscriber();
+
+  if (redisClient.isReady && subscriber?.isReady) {
+    io.adapter(createAdapter(redisClient, redisSubscriber));
+    logger.info("Socket.IO Redis adapter connected");
+  } else {
+    logger.info("Socket.IO using local in-memory adapter");
+  }
 
   io.on(SOCKET_EVENTS.CONNECTION, (socket) => {
     if (isDevelopment) {
