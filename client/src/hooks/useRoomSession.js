@@ -26,14 +26,16 @@ const sanitizeRoomSession = (session) => {
   };
 };
 
+// Room identity is tab-scoped so multiple demo tabs do not overwrite each other.
 const readRawSession = () => {
-  const currentSession = window.localStorage.getItem(ROOM_SESSION_KEY);
+  const tabSession = window.sessionStorage.getItem(ROOM_SESSION_KEY);
 
-  if (currentSession) {
-    return currentSession;
+  if (tabSession) {
+    return tabSession;
   }
 
-  return window.localStorage.getItem(LEGACY_ROOM_SESSION_KEY);
+  return window.localStorage.getItem(ROOM_SESSION_KEY)
+    || window.localStorage.getItem(LEGACY_ROOM_SESSION_KEY);
 };
 
 export const getStoredRoomSession = () => {
@@ -66,7 +68,8 @@ export const persistRoomSession = (session) => {
   }
 
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(ROOM_SESSION_KEY, JSON.stringify(nextSession));
+    window.sessionStorage.setItem(ROOM_SESSION_KEY, JSON.stringify(nextSession));
+    window.localStorage.removeItem(ROOM_SESSION_KEY);
     window.localStorage.removeItem(LEGACY_ROOM_SESSION_KEY);
   }
 
@@ -75,6 +78,7 @@ export const persistRoomSession = (session) => {
 
 export const clearStoredRoomSession = () => {
   if (typeof window !== "undefined") {
+    window.sessionStorage.removeItem(ROOM_SESSION_KEY);
     window.localStorage.removeItem(ROOM_SESSION_KEY);
     window.localStorage.removeItem(LEGACY_ROOM_SESSION_KEY);
   }
