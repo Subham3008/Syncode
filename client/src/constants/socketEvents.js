@@ -15,6 +15,13 @@ export const SOCKET_EVENTS = {
   PARTICIPANTS_UPDATED: "participants:updated",
   ACTIVITY_UPDATED: "activity:updated",
 
+  EDITOR_GET_STATE: "editor:get-state",
+  EDITOR_STATE: "editor:state",
+  EDITOR_DELTA: "editor:delta",
+  EDITOR_DELTA_APPLIED: "editor:delta-applied",
+  EDITOR_SYNC: "editor:sync",
+  EDITOR_ERROR: "editor:error",
+
   HOST_RENAME_ROOM: "host:rename-room",
   HOST_KICK_USER: "host:kick-user",
   HOST_LOCK_ROOM: "host:lock-room",
