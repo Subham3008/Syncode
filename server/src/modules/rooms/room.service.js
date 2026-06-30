@@ -144,10 +144,21 @@ export const rejoinRoom = async ({ roomCode, userId }) => {
     throw new ApiError(HTTP_STATUS.FORBIDDEN, "Room is closed");
   }
 
-  const participant = room.participants.find((item) => item.userId === normalizedUserId);
+  let participant = room.participants.find((item) => item.userId === normalizedUserId);
 
   if (!participant) {
-    throw new ApiError(HTTP_STATUS.NOT_FOUND, "Participant not found in this room");
+    if (room.hostId !== normalizedUserId) {
+      throw new ApiError(HTTP_STATUS.NOT_FOUND, "Participant not found in this room");
+    }
+
+    participant = createParticipant({
+      userId: normalizedUserId,
+      username: room.hostName,
+      room,
+      isHost: true
+    });
+    room.participants.push(participant);
+    await room.save();
   }
 
   const lastSeen = now();
