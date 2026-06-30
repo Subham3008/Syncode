@@ -14,7 +14,7 @@ const Input = ({
         </span>
       ) : null}
       <input
-        className={`h-11 w-full rounded border border-border bg-canvas px-3 text-sm text-heading outline-none transition placeholder:text-muted focus:border-accent focus:ring-4 focus:ring-accent/20 disabled:cursor-not-allowed disabled:opacity-60 ${inputClassName}`}
+        className={`h-11 w-full rounded-md border border-border bg-canvas/90 px-3 text-sm text-heading outline-none transition duration-200 placeholder:text-muted hover:border-[#414752] focus:border-accent focus:bg-canvas focus:ring-4 focus:ring-accent/15 disabled:cursor-not-allowed disabled:opacity-60 ${inputClassName}`}
         {...props}
       />
       {error ? <span className="mt-2 block text-xs text-danger">{error}</span> : null}

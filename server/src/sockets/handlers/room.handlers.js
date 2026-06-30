@@ -3,6 +3,7 @@ import { SOCKET_EVENTS } from "../../constants/socketEvents.js";
 import { toRoomDTO, toRoomSessionDTO } from "../../modules/rooms/room.dto.js";
 import {
   joinRoom,
+  leaveRoom,
   markParticipantOffline,
   markParticipantOnline,
   rejoinRoom
@@ -67,19 +68,21 @@ const attachSocketToRoom = async ({ io, socket, room, sessionUser }) => {
   emitRoomState(io, onlineRoom);
 };
 
-const detachSocketFromRoom = async ({ io, socket, roomCode, userId }) => {
+const detachSocketFromRoom = async ({ io, socket, roomCode, userId, intentionalLeave = false }) => {
   const userData = clearSocketFromAllMaps(socket.id) ?? { roomCode, userId };
 
   if (userData.roomCode) {
     socket.leave(userData.roomCode);
   }
 
-  const result = await markParticipantOffline({
+  const updatePresence = intentionalLeave ? leaveRoom : markParticipantOffline;
+  const result = await updatePresence({
     roomCode: userData.roomCode,
-    userId: userData.userId
+    userId: userData.userId,
+    socketId: socket.id
   });
 
-  if (result?.room) {
+  if (result?.room && !result.ignoredStaleSocket) {
     socket.to(userData.roomCode).emit(SOCKET_EVENTS.ROOM_LEFT, {
       userId: userData.userId,
       username: result.participant.username
@@ -115,7 +118,7 @@ export const registerRoomHandlers = (io, socket) => {
     try {
       const storedUser = getUserBySocket(socket.id);
       const data = storedUser ?? roomSocketLeaveSchema.parse(payload);
-      await detachSocketFromRoom({ io, socket, ...data });
+      await detachSocketFromRoom({ io, socket, ...data, intentionalLeave: true });
     } catch (error) {
       emitRoomError(socket, error);
     }

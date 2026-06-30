@@ -11,7 +11,8 @@ const startServer = async () => {
   await connectRedis();
 
   const httpServer = http.createServer(app);
-  initializeSocketServer(httpServer);
+  const io = initializeSocketServer(httpServer);
+  app.set("io", io);
 
   httpServer.listen(env.port, () => {
     logger.info(`Syncode server running on port ${env.port}`);

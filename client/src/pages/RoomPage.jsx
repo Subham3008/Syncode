@@ -164,7 +164,6 @@ const RoomPage = () => {
       socket.off(SOCKET_EVENTS.ACTIVITY_UPDATED, handleActivityUpdated);
       socket.off(SOCKET_EVENTS.TYPING_UPDATED, handleTypingUpdated);
       socket.off(SOCKET_EVENTS.ROOM_ERROR, handleRoomError);
-      socket.off(SOCKET_EVENTS.PRESENCE_ERROR, handlePresenceError);
 
       if (socket.connected) {
         socket.emit(SOCKET_EVENTS.ROOM_LEAVE, {
@@ -173,11 +172,8 @@ const RoomPage = () => {
         });
         socket.disconnect();
       }
-
-      setIsSocketRoomReady(false);
-      setTypingUsers([]);
     };
-  }, [clearSession, navigate, roomCode, sessionRoomCode, sessionUserId, status]);
+  }, [roomCode, sessionRoomCode, sessionUserId, status]);
 
   if (status === "invalid") {
     return <Navigate replace to={ROUTES.HOME} />;
@@ -233,48 +229,32 @@ const RoomPage = () => {
   );
 
   return (
-    <main className="flex min-h-screen flex-col bg-canvas text-body">
+    <main className="flex h-screen overflow-hidden bg-canvas text-body">
       <Toast
         message={toast?.message}
         onClose={() => setToast(null)}
         tone={toast?.tone}
       />
 
-      <RoomHeader onLeave={handleLeave} room={room} session={session} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <RoomHeader onLeave={handleLeave} room={room} session={session} />
 
       <section className="flex min-h-0 flex-1 flex-col md:flex-row">
-        {isEditorReady ? (
-          <CodeEditor
-            initialDocument={room.document}
-            initialVersion={room.documentVersion}
-            roomCode={room.roomCode}
-            userId={sessionUserId}
-            username={sessionUsername}
-          />
-        ) : (
-          <section className="grid min-h-[420px] flex-1 place-items-center bg-canvas p-6">
-            <StatePanel
-              description="Joining the realtime editor channel."
-              eyebrow="Editor"
-              icon={<Loader2 className="animate-spin" size={22} />}
-              title="Opening document"
-            />
-          </section>
-        )}
+        <EditorPlaceholder document={room.document} />
         <PresencePlaceholder
           activityLog={room.activityLog}
           participants={room.participants}
-          typingUsers={typingUsers}
         />
       </section>
 
-      <HostControls
-        onNotify={setToast}
-        onRoomClosed={handleRoomClosed}
-        onRoomUpdate={setRoom}
-        room={room}
-        session={session}
-      />
+        <HostControls
+          onNotify={setToast}
+          onRoomClosed={handleRoomClosed}
+          onRoomUpdate={setRoom}
+          room={room}
+          session={session}
+        />
+      </div>
     </main>
   );
 };
