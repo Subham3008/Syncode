@@ -46,6 +46,52 @@ const createClientMutationId = () => {
   return `mutation_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 };
 
+const getDeltaOwner = ({ userColor = "", userId = "", username = "" } = {}) => ({
+  color: userColor,
+  userId,
+  username
+});
+
+const applyDeltaToOwnership = ({
+  charOwnership = [],
+  delta,
+  lineOwnership = {},
+  owner
+}) => {
+  if (!delta || !owner?.userId || !owner?.username) {
+    return {
+      charOwnership: normalizeCharOwnership(charOwnership).slice(),
+      lineOwnership: normalizeLineOwnership(lineOwnership)
+    };
+  }
+
+  const insertedLength = typeof delta.text === "string" ? delta.text.length : 0;
+  const startPosition = Number.isInteger(delta.position) ? delta.position : 0;
+  const removedLength = Number.isInteger(delta.length) ? delta.length : 0;
+  const lineNumber = Number.isInteger(delta.lineNumber) && delta.lineNumber > 0
+    ? delta.lineNumber
+    : 1;
+  const nextLineOwnership = {
+    ...normalizeLineOwnership(lineOwnership),
+    [String(lineNumber)]: owner
+  };
+  const nextCharOwnership = normalizeCharOwnership(charOwnership).slice();
+  const insertedOwnership = Array.from({ length: insertedLength }, () => owner);
+
+  if (delta.type === "insert") {
+    nextCharOwnership.splice(startPosition, 0, ...insertedOwnership);
+  } else if (delta.type === "delete") {
+    nextCharOwnership.splice(startPosition, removedLength);
+  } else {
+    nextCharOwnership.splice(startPosition, removedLength, ...insertedOwnership);
+  }
+
+  return {
+    charOwnership: nextCharOwnership,
+    lineOwnership: nextLineOwnership
+  };
+};
+
 export const useDocumentSync = ({
   roomCode,
   userColor = "",
@@ -65,6 +111,7 @@ export const useDocumentSync = ({
   const versionRef = useRef(version);
   const pendingMutationIdsRef = useRef(new Set());
   const queuedDeltasRef = useRef([]);
+  const optimisticDeltasRef = useRef([]);
   const inFlightMutationIdRef = useRef("");
   const flushQueuedDeltaRef = useRef(null);
   const connectionRef = useRef({
@@ -95,8 +142,30 @@ export const useDocumentSync = ({
     setEditorError("");
     pendingMutationIdsRef.current.clear();
     queuedDeltasRef.current = [];
+    optimisticDeltasRef.current = [];
     inFlightMutationIdRef.current = "";
   }, [initialDocument, initialVersion, normalizedRoomCode]);
+
+  const applyOwnershipWithOptimisticDeltas = useCallback(({
+    charOwnership: confirmedCharOwnership = [],
+    lineOwnership: confirmedLineOwnership = {}
+  } = {}) => {
+    const ownership = optimisticDeltasRef.current.reduce(
+      (currentOwnership, optimisticPayload) =>
+        applyDeltaToOwnership({
+          ...currentOwnership,
+          delta: optimisticPayload.delta,
+          owner: optimisticPayload.owner
+        }),
+      {
+        charOwnership: normalizeCharOwnership(confirmedCharOwnership).slice(),
+        lineOwnership: normalizeLineOwnership(confirmedLineOwnership)
+      }
+    );
+
+    setLineOwnership(ownership.lineOwnership);
+    setCharOwnership(ownership.charOwnership);
+  }, []);
 
   const updateSavingState = useCallback(() => {
     setIsSaving(
@@ -120,51 +189,49 @@ export const useDocumentSync = ({
     setEditorError(message || "Editor sync failed");
     pendingMutationIdsRef.current.clear();
     queuedDeltasRef.current = [];
+    optimisticDeltasRef.current = [];
     inFlightMutationIdRef.current = "";
     setIsSaving(false);
     setIsSynced(false);
   }, []);
 
-  const applyOptimisticOwnership = useCallback((delta) => {
-    if (!delta || !userId || !username) {
+  const pushOptimisticOwnership = useCallback((payload) => {
+    if (!payload?.delta || !payload.owner?.userId || !payload.owner?.username) {
       return;
     }
 
-    const owner = {
-      color: userColor,
-      userId,
-      username
-    };
-    const insertedLength = typeof delta.text === "string" ? delta.text.length : 0;
-    const startPosition = Number.isInteger(delta.position) ? delta.position : 0;
-    const removedLength = Number.isInteger(delta.length) ? delta.length : 0;
-    const lineNumber = Number.isInteger(delta.lineNumber) && delta.lineNumber > 0
-      ? delta.lineNumber
-      : 1;
+    optimisticDeltasRef.current.push(payload);
 
-    setLineOwnership((currentOwnership) => ({
-      ...normalizeLineOwnership(currentOwnership),
-      [String(lineNumber)]: owner
-    }));
-
+    setLineOwnership((currentOwnership) =>
+      applyDeltaToOwnership({
+        charOwnership: [],
+        delta: payload.delta,
+        lineOwnership: currentOwnership,
+        owner: payload.owner
+      }).lineOwnership
+    );
     setCharOwnership((currentOwnership) => {
-      const nextOwnership = normalizeCharOwnership(currentOwnership).slice();
-      const insertedOwnership = Array.from({ length: insertedLength }, () => owner);
+      const ownership = applyDeltaToOwnership({
+        charOwnership: currentOwnership,
+        delta: payload.delta,
+        lineOwnership: {},
+        owner: payload.owner
+      });
 
-      if (delta.type === "insert") {
-        nextOwnership.splice(startPosition, 0, ...insertedOwnership);
-        return nextOwnership;
-      }
-
-      if (delta.type === "delete") {
-        nextOwnership.splice(startPosition, removedLength);
-        return nextOwnership;
-      }
-
-      nextOwnership.splice(startPosition, removedLength, ...insertedOwnership);
-      return nextOwnership;
+      return ownership.charOwnership;
     });
-  }, [userColor, userId, username]);
+  }, []);
+
+  const removeOptimisticOwnership = useCallback((clientMutationId = "") => {
+    if (!clientMutationId) {
+      optimisticDeltasRef.current = [];
+      return;
+    }
+
+    optimisticDeltasRef.current = optimisticDeltasRef.current.filter(
+      (payload) => payload.clientMutationId !== clientMutationId
+    );
+  }, []);
 
   const {
     replaceDocument,
@@ -192,13 +259,21 @@ export const useDocumentSync = ({
       const nextVersion = normalizeVersion(payload.version);
       versionRef.current = nextVersion;
       setVersion(nextVersion);
-      setLineOwnership(normalizeLineOwnership(payload.lineOwnership));
-      setCharOwnership(normalizeCharOwnership(payload.charOwnership));
+      removeOptimisticOwnership();
+      applyOwnershipWithOptimisticDeltas({
+        charOwnership: payload.charOwnership,
+        lineOwnership: payload.lineOwnership
+      });
       setEditorError("");
       removePendingMutation();
       setIsSynced(true);
     },
-    [removePendingMutation, replaceDocument]
+    [
+      applyOwnershipWithOptimisticDeltas,
+      removeOptimisticOwnership,
+      removePendingMutation,
+      replaceDocument
+    ]
   );
 
   const handleRemoteDelta = useCallback(
@@ -216,22 +291,41 @@ export const useDocumentSync = ({
         setVersion(nextVersion);
       }
 
-      setLineOwnership(normalizeLineOwnership(payload.lineOwnership));
-      setCharOwnership(normalizeCharOwnership(payload.charOwnership));
+      applyOwnershipWithOptimisticDeltas({
+        charOwnership: payload.charOwnership,
+        lineOwnership: payload.lineOwnership
+      });
       setEditorError("");
       setIsSynced(true);
     },
-    [applyRemoteChange]
+    [applyOwnershipWithOptimisticDeltas, applyRemoteChange]
   );
 
   const handleEditorSync = useCallback(
     (payload = {}) => {
       const nextVersion = normalizeVersion(payload.version);
 
+      if (
+        payload.clientMutationId
+        && inFlightMutationIdRef.current === payload.clientMutationId
+      ) {
+        inFlightMutationIdRef.current = "";
+      }
+
+      if (nextVersion < versionRef.current) {
+        removeOptimisticOwnership(payload.clientMutationId);
+        removePendingMutation(payload.clientMutationId);
+        flushQueuedDeltaRef.current?.();
+        return;
+      }
+
       versionRef.current = nextVersion;
       setVersion(nextVersion);
-      setLineOwnership(normalizeLineOwnership(payload.lineOwnership));
-      setCharOwnership(normalizeCharOwnership(payload.charOwnership));
+      removeOptimisticOwnership(payload.clientMutationId);
+      applyOwnershipWithOptimisticDeltas({
+        charOwnership: payload.charOwnership,
+        lineOwnership: payload.lineOwnership
+      });
       setEditorError("");
       removePendingMutation(payload.clientMutationId);
       setIsSynced(true);
@@ -239,8 +333,15 @@ export const useDocumentSync = ({
       if (payload.conflictResolved) {
         requestEditorState();
       }
+
+      flushQueuedDeltaRef.current?.();
     },
-    [removePendingMutation, requestEditorState]
+    [
+      applyOwnershipWithOptimisticDeltas,
+      removeOptimisticOwnership,
+      removePendingMutation,
+      requestEditorState
+    ]
   );
 
   const flushQueuedDelta = useCallback(() => {
@@ -276,11 +377,14 @@ export const useDocumentSync = ({
       SOCKET_EVENTS.EDITOR_DELTA,
       payload,
       (ackError, response = {}) => {
-        inFlightMutationIdRef.current = "";
+        if (inFlightMutationIdRef.current === payload.clientMutationId) {
+          inFlightMutationIdRef.current = "";
+        }
 
         if (ackError) {
           pendingMutationIdsRef.current.delete(payload.clientMutationId);
           queuedDeltasRef.current = [];
+          removeOptimisticOwnership(payload.clientMutationId);
           updateSavingState();
           setIsSynced(false);
           setEditorError("Editor sync timed out. Refreshed the latest room state.");
@@ -291,16 +395,22 @@ export const useDocumentSync = ({
         if (!response.success) {
           pendingMutationIdsRef.current.delete(payload.clientMutationId);
           queuedDeltasRef.current = [];
+          removeOptimisticOwnership(payload.clientMutationId);
           handleDeltaError(response.message || "Editor sync failed");
           requestEditorState();
           return;
         }
 
         handleEditorSync(response.data);
-        flushQueuedDeltaRef.current?.();
       }
     );
-  }, [handleDeltaError, handleEditorSync, requestEditorState, updateSavingState]);
+  }, [
+    handleDeltaError,
+    handleEditorSync,
+    removeOptimisticOwnership,
+    requestEditorState,
+    updateSavingState
+  ]);
 
   useEffect(() => {
     flushQueuedDeltaRef.current = flushQueuedDelta;
@@ -322,16 +432,20 @@ export const useDocumentSync = ({
         return null;
       }
 
-      applyOptimisticOwnership(change.delta);
-
       const payload = {
         clientMutationId: createClientMutationId(),
+        owner: getDeltaOwner({
+          userColor,
+          userId: currentUserId,
+          username: currentUsername
+        }),
         roomCode: currentRoomCode,
         userId: currentUserId,
         username: currentUsername,
         delta: change.delta
       };
 
+      pushOptimisticOwnership(payload);
       queuedDeltasRef.current.push(payload);
       setIsSaving(true);
       setIsSynced(false);
@@ -340,7 +454,7 @@ export const useDocumentSync = ({
 
       return payload;
     },
-    [applyLocalChange, applyOptimisticOwnership, handleDeltaError]
+    [applyLocalChange, handleDeltaError, pushOptimisticOwnership, userColor]
   );
 
   useEffect(() => {
