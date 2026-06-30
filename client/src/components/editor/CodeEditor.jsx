@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileCode2, RefreshCw } from "lucide-react";
+import { FileCode2, RefreshCw, UsersRound } from "lucide-react";
 import { SOCKET_EVENTS } from "../../constants/socketEvents.js";
 import { useDocumentSync } from "../../hooks/useDocumentSync.js";
 import { socket } from "../../socket/socket.js";
@@ -152,30 +152,25 @@ const CodeEditor = ({
   }, [roomCode]);
 
   return (
-    <section className="flex min-h-[420px] flex-1 flex-col overflow-hidden bg-canvas">
-      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-border bg-surface px-4">
-        <div className="flex min-w-0 items-center gap-2">
-          <FileCode2 className="shrink-0 text-accent" size={18} />
-          <div className="min-w-0">
-            <h2 className="truncate font-mono text-sm font-semibold text-heading">main.js</h2>
-            <p className="truncate text-xs text-muted">Live document</p>
-          </div>
+    <section className="flex min-h-[420px] flex-1 flex-col overflow-hidden bg-[#0b1017]">
+      <header className="flex min-h-11 items-center justify-between gap-3 border-b border-border bg-[#111820] px-3">
+        <div className="flex h-full min-w-0 items-center gap-2 border-r border-border bg-[#0b1017] px-3">
+          <FileCode2 className="shrink-0 text-accent" size={16} />
+          <h2 className="truncate font-mono text-sm font-semibold text-heading">main.js</h2>
         </div>
 
         <div className="flex min-w-0 items-center gap-2">
           {ownershipSummary.length ? (
-            <div className="hidden min-w-0 items-center gap-1.5 rounded border border-border bg-canvas/70 px-2 py-1 md:flex">
+            <div className="hidden min-w-0 items-center gap-2 rounded border border-border bg-[#0b1017] px-2 py-1 md:flex">
+              <UsersRound size={14} className="text-muted" />
               {ownershipSummary.map((owner) => (
                 <span
-                  className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted"
+                  className="-ml-1 grid h-6 w-6 place-items-center rounded-full border border-[#111820] text-[10px] font-semibold text-white first:ml-0"
                   key={owner.userId}
                   title={`${owner.username} edited lines`}
+                  style={owner.color ? { backgroundColor: owner.color } : undefined}
                 >
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full bg-accent"
-                    style={owner.color ? { backgroundColor: owner.color } : undefined}
-                  />
-                  <span className="max-w-20 truncate">{owner.username}</span>
+                  {owner.username?.charAt(0)?.toUpperCase() || "U"}
                 </span>
               ))}
             </div>
@@ -183,7 +178,7 @@ const CodeEditor = ({
 
           <button
             aria-label="Refresh editor state"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded border border-border bg-elevated text-muted transition hover:border-accent hover:text-accent"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded border border-border bg-[#0b1017] text-muted transition hover:border-accent hover:text-accent"
             onClick={requestEditorState}
             title="Refresh editor state"
             type="button"
@@ -201,7 +196,7 @@ const CodeEditor = ({
           scrollTop={editorScroll.top}
         />
 
-        <div className="relative min-w-0 flex-1 bg-[#0b1017]">
+        <div className="relative min-w-0 flex-1 bg-[#080d13]">
           <ColoredDocumentOverlay
             charOwnership={charOwnership}
             document={document}

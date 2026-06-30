@@ -7,7 +7,7 @@ const LineNumbers = ({ lineCount = 1, scrollTop = 0 }) => {
   return (
     <div
       aria-hidden="true"
-      className="relative w-14 shrink-0 overflow-hidden border-r border-border bg-canvas/80 font-mono text-[13px] leading-6 text-muted"
+      className="relative w-12 shrink-0 overflow-hidden border-r border-border bg-[#0b1017] font-mono text-[13px] leading-6 text-[#687280]"
     >
       <div
         className="px-3 py-4 text-right"

@@ -1,4 +1,4 @@
-import { Code2, LogOut } from "lucide-react";
+import { Code2, LogOut, UsersRound } from "lucide-react";
 import Badge from "../common/Badge.jsx";
 import Button from "../common/Button.jsx";
 import RoomCodeBadge from "./RoomCodeBadge.jsx";
@@ -7,9 +7,9 @@ const RoomHeader = ({ room, session, onLeave }) => {
   const onlineCount = room.participants?.filter((participant) => participant.isOnline).length ?? 0;
 
   return (
-    <header className="flex min-h-14 flex-col gap-3 border-b border-border bg-surface px-4 py-3 md:flex-row md:items-center md:justify-between">
+    <header className="flex min-h-14 flex-col gap-3 border-b border-border bg-[#111820] px-4 py-3 md:flex-row md:items-center md:justify-between">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded border border-border bg-elevated text-accent">
+        <div className="grid h-9 w-9 shrink-0 place-items-center rounded border border-border bg-[#0b1017] text-accent">
           <Code2 size={18} />
         </div>
         <div className="min-w-0">
@@ -18,7 +18,10 @@ const RoomHeader = ({ room, session, onLeave }) => {
             {session.isHost ? <Badge tone="warning">Host</Badge> : null}
             {room.isLocked ? <Badge tone="danger">Locked</Badge> : <Badge tone="success">Open</Badge>}
           </div>
-          <p className="mt-1 text-xs text-muted">{onlineCount} online</p>
+          <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted">
+            <UsersRound size={13} />
+            {onlineCount} collaborator{onlineCount === 1 ? "" : "s"} online
+          </p>
         </div>
       </div>
 

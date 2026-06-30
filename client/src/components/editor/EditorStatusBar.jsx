@@ -73,7 +73,7 @@ const EditorStatusBar = ({
   const isSpinning = syncStatus === "saving" || (isSaving && syncStatus !== "interrupted");
 
   return (
-    <footer className="flex min-h-10 flex-wrap items-center justify-between gap-2 border-t border-border bg-surface px-4 py-2 text-xs text-muted">
+    <footer className="flex min-h-9 flex-wrap items-center justify-between gap-2 border-t border-border bg-[#111820] px-4 py-1.5 text-xs text-muted">
       <div className="flex min-w-0 flex-wrap items-center gap-3">
         <span className={`inline-flex items-center gap-1.5 font-medium ${status.className}`}>
           <StatusIcon className={isSpinning ? "animate-spin" : ""} size={14} />

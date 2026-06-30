@@ -3,13 +3,10 @@ import { useNavigate } from "react-router-dom";
 import {
   ChevronRight,
   Code2,
+  Loader2,
   LockKeyhole,
   Play,
-  Search,
-  Settings,
-  SplitSquareHorizontal,
-  Terminal,
-  UsersRound
+  Terminal
 } from "lucide-react";
 import Toast from "../components/common/Toast.jsx";
 import CreateRoomForm from "../components/room/CreateRoomForm.jsx";
@@ -27,6 +24,8 @@ const initialDemoCode = `const room = {
 console.log("Room:", room.code);
 console.log("Editing:", room.file);
 console.log("Online:", room.users.join(", "));`;
+
+const RUNNING_STATE_MIN_MS = 600;
 
 const createRunnerWorkerSource = () => `
 const formatValue = (value) => {
@@ -100,8 +99,19 @@ const HomePage = () => {
   );
 
   const runDemoCode = () => {
+    const startedAt = Date.now();
+
     setIsRunningDemo(true);
     setDemoOutput(["Running JavaScript..."]);
+
+    const finishRun = (nextOutput) => {
+      const remainingMs = Math.max(0, RUNNING_STATE_MIN_MS - (Date.now() - startedAt));
+
+      window.setTimeout(() => {
+        setIsRunningDemo(false);
+        setDemoOutput(nextOutput);
+      }, remainingMs);
+    };
 
     const workerUrl = URL.createObjectURL(
       new Blob([createRunnerWorkerSource()], { type: "text/javascript" })
@@ -123,19 +133,18 @@ const HomePage = () => {
       const logs = Array.isArray(event.data.logs) ? event.data.logs : [];
 
       if (!event.data.ok) {
-        setDemoOutput([...logs, `Error: ${event.data.error || "JavaScript execution failed"}`]);
+        finishRun([...logs, `Error: ${event.data.error || "JavaScript execution failed"}`]);
         return;
       }
 
-      setDemoOutput(logs.length ? logs : ["Done. No output was written."]);
+      finishRun(logs.length ? logs : ["Done. No output was written."]);
     };
 
     worker.onerror = (error) => {
       window.clearTimeout(timeoutId);
       worker.terminate();
       URL.revokeObjectURL(workerUrl);
-      setIsRunningDemo(false);
-      setDemoOutput([`Error: ${error.message || "JavaScript execution failed"}`]);
+      finishRun([`Error: ${error.message || "JavaScript execution failed"}`]);
     };
 
     worker.postMessage({ code: demoCode });
@@ -190,14 +199,8 @@ const HomePage = () => {
         tone={toast?.tone}
       />
 
-      <header className="flex h-11 items-center justify-between border-b border-[#2b313a] bg-[#181f2a] px-4">
+      <header className="flex h-12 items-center justify-between border-b border-[#2b313a] bg-[#181f2a] px-4">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-            <span className="h-3 w-3 rounded-full bg-[#ffbd2e]" />
-            <span className="h-3 w-3 rounded-full bg-[#28c840]" />
-          </div>
-          <div className="hidden h-5 w-px bg-border sm:block" />
           <div className="flex min-w-0 items-center gap-2 text-heading">
             <Code2 size={17} className="text-accent" />
             <span className="truncate text-sm font-semibold">Syncode</span>
@@ -211,32 +214,12 @@ const HomePage = () => {
         </span>
       </header>
 
-      <section className="grid min-h-[calc(100vh-44px)] grid-cols-1 overflow-hidden lg:grid-cols-[56px_minmax(0,1fr)_420px]">
-        <aside className="hidden border-r border-[#2b313a] bg-[#111820] py-3 lg:block">
-          <div className="grid gap-2">
-            {[Code2, Search, UsersRound, SplitSquareHorizontal, Settings].map((Icon, index) => (
-              <button
-                aria-label={`Workspace tool ${index + 1}`}
-                className={`mx-auto grid h-10 w-10 place-items-center rounded text-muted transition hover:bg-[#1f2937] hover:text-heading ${
-                  index === 0 ? "bg-[#1f2937] text-heading" : ""
-                }`}
-                key={index}
-                type="button"
-              >
-                <Icon size={19} />
-              </button>
-            ))}
-          </div>
-        </aside>
-
+      <section className="grid min-h-[calc(100vh-48px)] grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="flex min-h-0 flex-col">
           <div className="flex h-10 items-center border-b border-[#2b313a] bg-[#111820]">
             <div className="flex h-full items-center gap-2 border-r border-[#2b313a] bg-[#0d1117] px-4 text-xs text-heading">
               <Code2 size={14} className="text-accent" />
               main.js
-            </div>
-            <div className="hidden h-full items-center gap-2 border-r border-[#2b313a] px-4 text-xs text-muted sm:flex">
-              room.json
             </div>
           </div>
 
@@ -246,7 +229,7 @@ const HomePage = () => {
                 <span className="h-2 w-2 rounded-full bg-success" />
                 single-file collaborative editor
               </p>
-              <h1 className="max-w-3xl text-[clamp(2.25rem,5vw,5.4rem)] font-bold leading-[0.98] text-heading">
+              <h1 className="max-w-3xl text-[clamp(2.15rem,4.4vw,4.65rem)] font-bold leading-[1.02] text-heading">
                 Open a shared coding room in seconds.
               </h1>
               <p className="mt-5 max-w-2xl text-base leading-7 text-[#b8c2cc] sm:text-lg">
@@ -277,8 +260,12 @@ const HomePage = () => {
                   onClick={runDemoCode}
                   type="button"
                 >
-                  <Play size={13} />
-                  Run
+                  {isRunningDemo ? (
+                    <Loader2 className="animate-spin" size={13} />
+                  ) : (
+                    <Play size={13} />
+                  )}
+                  {isRunningDemo ? "Running" : "Run"}
                 </button>
               </div>
               <div className="grid min-h-[310px] grid-rows-[minmax(190px,1fr)_auto]">

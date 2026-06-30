@@ -97,7 +97,6 @@ const ColoredDocumentOverlay = ({
                 ? chunks.map((chunk, chunkIndex) => (
                     <span
                       key={`${lineNumber}-${chunkIndex}-${getOwnerKey(chunk.owner)}`}
-                      style={chunk.owner?.color ? { color: chunk.owner.color } : undefined}
                       title={
                         chunk.owner?.username
                           ? `${chunk.owner.username}'s characters`
